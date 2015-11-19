@@ -205,7 +205,7 @@ def apply_momentum(updates, params=None, momentum=0.9):
     return updates
 
 
-def momentum(loss_or_grads, params, learning_rate, momentum=0.9):
+def momentum(loss_or_grads, params, learning_rate, layer_weights=None, momentum=0.9):
     """Stochastic Gradient Descent (SGD) updates with momentum
 
     Generates update expressions of the form:
@@ -240,7 +240,7 @@ def momentum(loss_or_grads, params, learning_rate, momentum=0.9):
     apply_momentum : Generic function applying momentum to updates
     nesterov_momentum : Nesterov's variant of SGD with momentum
     """
-    updates = sgd(loss_or_grads, params, learning_rate)
+    updates = sgd(loss_or_grads, params, learning_rate, layer_weights)
     return apply_momentum(updates, momentum=momentum)
 
 
