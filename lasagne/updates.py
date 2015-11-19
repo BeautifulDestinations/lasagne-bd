@@ -121,7 +121,7 @@ def get_or_compute_grads(loss_or_grads, params):
         return theano.grad(loss_or_grads, params)
 
 
-def sgd(loss_or_grads, params, learning_rate):
+def sgd(loss_or_grads, params, learning_rate, layer_weights = None):
     """Stochastic Gradient Descent (SGD) updates
 
     Generates update expressions of the form:
@@ -145,9 +145,15 @@ def sgd(loss_or_grads, params, learning_rate):
     grads = get_or_compute_grads(loss_or_grads, params)
     updates = OrderedDict()
 
-    for param, grad in zip(params, grads):
-        updates[param] = param - learning_rate * grad
-
+    if layer_weights is None:
+        for param, grad in zip(params, grads):
+            updates[param] = param - learning_rate * grad
+    else:
+        assert len( layer_weights ) == len( params ), \
+                "There are more/less layers than layer_weights! {}, {}".format( 
+                        np.shape( layer_weights ), np.shape( params ) )
+        for( param, grad, weight ) in zip( params, grads, layer_weights):
+            updates[param] = param - learning_rate * weight * grad
     return updates
 
 
