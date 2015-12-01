@@ -150,8 +150,12 @@ def sgd(loss_or_grads, params, learning_rate, layer_weights = None):
             updates[param] = param - learning_rate * grad
     else:
         assert len( layer_weights ) == len( params ), \
-                "There are more/less layers than layer_weights! {}, {}".format( 
+                "There are more/less parametersets than layer_weights! {}, {}\n"\
+                'Note that norm and pooling layers do not have any weights related to them.\n'\
+                'Conv and dense layers have, however, a bias unit plus the weight matrix.\n'\
+                'In lasagne these count as two independent parametersets.\n'.format( 
                         np.shape( layer_weights ), np.shape( params ) )
+
         for( param, grad, weight ) in zip( params, grads, layer_weights):
             updates[param] = param - learning_rate * weight * grad
     return updates
@@ -541,7 +545,7 @@ def adadelta(loss_or_grads, params, learning_rate=1.0, rho=0.95, epsilon=1e-6):
 
 
 def adam(loss_or_grads, params, learning_rate=0.001, beta1=0.9,
-         beta2=0.999, epsilon=1e-8):
+         beta2=0.999, epsilon=1e-8, layer_weights=None):
     """Adam updates
 
     Adam updates implemented as in [1]_.
