@@ -17,10 +17,10 @@ class ConstLayer(Layer):
     A fully connected layer that has non-trainable parameters.
     These parameters should stay fixed during training.
     """
-    def __init__(self, incoming, num_units, W=init.GlorotUniform(),
+    def __init__(self, incoming, num_units, W=init.Constant(),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
-        super(DenseLayer, self).__init__(incoming, **kwargs)
+        super(ConstLayer, self).__init__(incoming, **kwargs)
         self.nonlinearity = (nonlinearities.identity if nonlinearity is None
                              else nonlinearity)
 
