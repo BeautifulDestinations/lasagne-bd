@@ -168,6 +168,28 @@ def squared_error(a, b):
     """
     return (a - b)**2
 
+def weighted_squared_error(a, b):
+    """Computes the element-wise squared difference between two tensors.
+
+    .. math:: L = (p - t)^2
+
+    Parameters
+    ----------
+    a, b : Theano tensor
+        The tensors to compute the squared difference between.
+
+    Returns
+    -------
+    Theano tensor
+        An expression for the item-wise squared difference.
+
+    Notes
+    -----
+    This is the loss function of choice for many regression problems
+    or auto-encoders with linear output units.
+    """
+    return ( 1. + math.abs( b ) ) * squared_error( a,b )
+
 
 def aggregate(loss, weights=None, mode='mean'):
     """Aggregates an element- or item-wise loss to a scalar loss.
