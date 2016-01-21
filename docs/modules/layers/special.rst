@@ -11,6 +11,11 @@ Special-purpose layers
 .. autoclass:: BiasLayer
    :members:
 
+.. autoclass:: ScaleLayer
+   :members:
+
+.. autofunction:: standardize
+
 .. autoclass:: ExpressionLayer
    :members:
 
@@ -24,4 +29,9 @@ Special-purpose layers
     :members:
 
 .. autofunction:: prelu
+
+.. autoclass:: RandomizedRectifierLayer
+    :members:
+
+.. autofunction:: rrelu
 

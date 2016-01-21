@@ -4,17 +4,23 @@ import theano.tensor as T
 from .. import init
 from .. import nonlinearities
 from ..utils import as_tuple
+from ..random import get_rng
 from .base import Layer, MergeLayer
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 
 __all__ = [
     "NonlinearityLayer",
     "BiasLayer",
+    "ScaleLayer",
+    "standardize",
     "ExpressionLayer",
     "InverseLayer",
     "TransformerLayer",
     "ParametricRectifierLayer",
     "prelu",
+    "RandomizedRectifierLayer",
+    "rrelu",
 ]
 
 
@@ -110,6 +116,123 @@ class BiasLayer(Layer):
             return input + self.b.dimshuffle(*pattern)
         else:
             return input
+
+
+class ScaleLayer(Layer):
+    """
+    lasagne.layers.ScaleLayer(incoming, scales=lasagne.init.Constant(1),
+    shared_axes='auto', **kwargs)
+
+    A layer that scales its inputs by learned coefficients.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape
+
+    scales : Theano shared variable, expression, numpy array, or callable
+        Initial value, expression or initializer for the scale.  The scale
+        shape must match the incoming shape, skipping those axes the scales are
+        shared over (see the example below).  See
+        :func:`lasagne.utils.create_param` for more information.
+
+    shared_axes : 'auto', int or tuple of int
+        The axis or axes to share scales over. If ``'auto'`` (the default),
+        share over all axes except for the second: this will share scales over
+        the minibatch dimension for dense layers, and additionally over all
+        spatial dimensions for convolutional layers.
+
+    Notes
+    -----
+    The scales parameter dimensionality is the input dimensionality minus the
+    number of axes the scales are shared over, which matches the bias parameter
+    conventions of :class:`DenseLayer` or :class:`Conv2DLayer`. For example:
+
+    >>> layer = ScaleLayer((20, 30, 40, 50), shared_axes=(0, 2))
+    >>> layer.scales.get_value().shape
+    (30, 50)
+    """
+    def __init__(self, incoming, scales=init.Constant(1), shared_axes='auto',
+                 **kwargs):
+        super(ScaleLayer, self).__init__(incoming, **kwargs)
+
+        if shared_axes == 'auto':
+            # default: share scales over all but the second axis
+            shared_axes = (0,) + tuple(range(2, len(self.input_shape)))
+        elif isinstance(shared_axes, int):
+            shared_axes = (shared_axes,)
+        self.shared_axes = shared_axes
+
+        # create scales parameter, ignoring all dimensions in shared_axes
+        shape = [size for axis, size in enumerate(self.input_shape)
+                 if axis not in self.shared_axes]
+        if any(size is None for size in shape):
+            raise ValueError("ScaleLayer needs specified input sizes for "
+                             "all axes that scales are not shared over.")
+        self.scales = self.add_param(
+            scales, shape, 'scales', regularizable=False)
+
+    def get_output_for(self, input, **kwargs):
+        axes = iter(range(self.scales.ndim))
+        pattern = ['x' if input_axis in self.shared_axes
+                   else next(axes) for input_axis in range(input.ndim)]
+        return input * self.scales.dimshuffle(*pattern)
+
+
+def standardize(layer, offset, scale, shared_axes):
+    """
+    Convenience function for standardizing inputs by applying a fixed offset
+    and scale.  This is usually useful when you want the input to your network
+    to, say, have zero mean and unit standard deviation over the feature
+    dimensions.  This layer allows you to include the appropriate statistics to
+    achieve this normalization as part of your network, and applies them to its
+    input.  The statistics are supplied as the `offset` and `scale` parameters,
+    which are applied to the input by subtracting `offset` and dividing by
+    `scale`, sharing dimensions as specified by the `shared_axes` argument.
+
+    Parameters
+    ----------
+    layer : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape.
+    offset : Theano shared variable, expression, or numpy array
+        The offset to apply (via subtraction) to the axis/axes being
+        standardized.
+    scale : Theano shared variable, expression or numpy array
+        The scale to apply (via division) to the axis/axes being standardized.
+    shared_axes : 'auto', int or tuple of int
+        The axis or axes to share the offset and scale over. If ``'auto'`` (the
+        default), share over all axes except for the second: this will share
+        scales over the minibatch dimension for dense layers, and additionally
+        over all spatial dimensions for convolutional layers.
+
+    Examples
+    --------
+    Assuming your training data exists in a 2D numpy ndarray called
+    ``training_data``, you can use this function to scale input features to the
+    [0, 1] range based on the training set statistics like so:
+
+    >>> import lasagne
+    >>> import numpy as np
+    >>> training_data = np.random.standard_normal((100, 20))
+    >>> input_shape = (None, training_data.shape[1])
+    >>> l_in = lasagne.layers.InputLayer(input_shape)
+    >>> offset = training_data.min(axis=0)
+    >>> scale = training_data.max(axis=0) - training_data.min(axis=0)
+    >>> l_std = standardize(l_in, offset, scale, shared_axes=0)
+
+    Alternatively, to z-score your inputs based on training set statistics, you
+    could set ``offset = training_data.mean(axis=0)`` and
+    ``scale = training_data.std(axis=0)`` instead.
+    """
+    # Subtract the offset
+    layer = BiasLayer(layer, -offset, shared_axes)
+    # Do not optimize the offset parameter
+    layer.params[layer.b].remove('trainable')
+    # Divide by the scale
+    layer = ScaleLayer(layer, T.inv(scale), shared_axes)
+    # Do not optimize the scales parameter
+    layer.params[layer.scales].remove('trainable')
+    return layer
 
 
 class ExpressionLayer(Layer):
@@ -530,3 +653,125 @@ def prelu(layer, **kwargs):
     if nonlinearity is not None:
         layer.nonlinearity = nonlinearities.identity
     return ParametricRectifierLayer(layer, **kwargs)
+
+
+class RandomizedRectifierLayer(Layer):
+    """
+    A layer that applies a randomized leaky rectify nonlinearity to its input.
+
+    The randomized leaky rectifier was first proposed and used in the Kaggle
+    NDSB Competition, and later evaluated in [1]_. Compared to the standard
+    leaky rectifier :func:`leaky_rectify`, it has a randomly sampled slope
+    for negative input during training, and a fixed slope during evaluation.
+
+    Equation for the randomized rectifier linear unit during training:
+    :math:`\\varphi(x) = \\max((\\sim U(lower, upper)) \\cdot x, x)`
+
+    During evaluation, the factor is fixed to the arithmetic mean of `lower`
+    and `upper`.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape
+
+    lower : Theano shared variable, expression, or constant
+        The lower bound for the randomly chosen slopes.
+
+    upper : Theano shared variable, expression, or constant
+        The upper bound for the randomly chosen slopes.
+
+    shared_axes : 'auto', 'all', int or tuple of int
+        The axes along which the random slopes of the rectifier units are
+        going to be shared. If ``'auto'`` (the default), share over all axes
+        except for the second - this will share the random slope over the
+        minibatch dimension for dense layers, and additionally over all
+        spatial dimensions for convolutional layers. If ``'all'``, share over
+        all axes, thus using a single random slope.
+
+    **kwargs
+        Any additional keyword arguments are passed to the `Layer` superclass.
+
+     References
+    ----------
+    .. [1] Bing Xu, Naiyan Wang et al. (2015):
+       Empirical Evaluation of Rectified Activations in Convolutional Network,
+       http://arxiv.org/abs/1505.00853
+    """
+    def __init__(self, incoming, lower=0.3, upper=0.8, shared_axes='auto',
+                 **kwargs):
+        super(RandomizedRectifierLayer, self).__init__(incoming, **kwargs)
+        self._srng = RandomStreams(get_rng().randint(1, 2147462579))
+        self.lower = lower
+        self.upper = upper
+
+        if not isinstance(lower > upper, theano.Variable) and lower > upper:
+            raise ValueError("Upper bound for RandomizedRectifierLayer needs "
+                             "to be higher than lower bound.")
+
+        if shared_axes == 'auto':
+            self.shared_axes = (0,) + tuple(range(2, len(self.input_shape)))
+        elif shared_axes == 'all':
+            self.shared_axes = tuple(range(len(self.input_shape)))
+        elif isinstance(shared_axes, int):
+            self.shared_axes = (shared_axes,)
+        else:
+            self.shared_axes = shared_axes
+
+    def get_output_for(self, input, deterministic=False, **kwargs):
+        """
+        Parameters
+        ----------
+        input : tensor
+            output from the previous layer
+        deterministic : bool
+            If true, the arithmetic mean of lower and upper are used for the
+            leaky slope.
+        """
+        if deterministic or self.upper == self.lower:
+            return theano.tensor.nnet.relu(input, (self.upper+self.lower)/2.0)
+        else:
+            shape = list(self.input_shape)
+            if any(s is None for s in shape):
+                shape = list(input.shape)
+            for ax in self.shared_axes:
+                shape[ax] = 1
+
+            rnd = self._srng.uniform(tuple(shape),
+                                     low=self.lower,
+                                     high=self.upper,
+                                     dtype=theano.config.floatX)
+            rnd = theano.tensor.addbroadcast(rnd, *self.shared_axes)
+            return theano.tensor.nnet.relu(input, rnd)
+
+
+def rrelu(layer, **kwargs):
+    """
+    Convenience function to apply randomized rectify to a given layer's output.
+    Will set the layer's nonlinearity to identity if there is one and will
+    apply the randomized rectifier instead.
+
+    Parameters
+    ----------
+    layer: a :class:`Layer` instance
+        The `Layer` instance to apply the randomized rectifier layer to;
+        note that it will be irreversibly modified as specified above
+
+    **kwargs
+        Any additional keyword arguments are passed to the
+        :class:`RandomizedRectifierLayer`
+
+    Examples
+    --------
+    Note that this function modifies an existing layer, like this:
+    >>> from lasagne.layers import InputLayer, DenseLayer, rrelu
+    >>> layer = InputLayer((32, 100))
+    >>> layer = DenseLayer(layer, num_units=200)
+    >>> layer = rrelu(layer)
+
+    In particular, :func:`rrelu` can *not* be passed as a nonlinearity.
+    """
+    nonlinearity = getattr(layer, 'nonlinearity', None)
+    if nonlinearity is not None:
+        layer.nonlinearity = nonlinearities.identity
+    return RandomizedRectifierLayer(layer, **kwargs)
