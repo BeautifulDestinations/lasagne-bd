@@ -351,11 +351,11 @@ class Conv2DDNNLayer(BaseConvLayer):
     def __init__(self, incoming, num_filters, filter_size, stride=(1, 1),
                  pad=0, untie_biases=False, W=init.GlorotUniform(),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
-                 flip_filters=False, **kwargs):
+                 flip_filters=False, trainable=True, **kwargs):
         super(Conv2DDNNLayer, self).__init__(incoming, num_filters,
                                              filter_size, stride, pad,
                                              untie_biases, W, b, nonlinearity,
-                                             flip_filters, n=2, **kwargs)
+                                             flip_filters, n=2, trainable=trainable, **kwargs)
 
     def convolve(self, input, **kwargs):
         # by default we assume 'cross', consistent with corrmm.

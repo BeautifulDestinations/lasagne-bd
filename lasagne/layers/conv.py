@@ -190,7 +190,7 @@ class BaseConvLayer(Layer):
                  untie_biases=False,
                  W=init.GlorotUniform(), b=init.Constant(0.),
                  nonlinearity=nonlinearities.rectify, flip_filters=True,
-                 n=None, **kwargs):
+                 n=None, trainable=True, **kwargs):
         super(BaseConvLayer, self).__init__(incoming, **kwargs)
         if nonlinearity is None:
             self.nonlinearity = nonlinearities.identity
@@ -222,7 +222,7 @@ class BaseConvLayer(Layer):
         else:
             self.pad = as_tuple(pad, n, int)
 
-        self.W = self.add_param(W, self.get_W_shape(), name="W")
+        self.W = self.add_param(W, self.get_W_shape(), name="W", trainable=trainable)
         if b is None:
             self.b = None
         else:
@@ -231,7 +231,7 @@ class BaseConvLayer(Layer):
             else:
                 biases_shape = (num_filters,)
             self.b = self.add_param(b, biases_shape, name="b",
-                                    regularizable=False)
+                                    regularizable=False, trainable = trainable)
 
     def get_W_shape(self):
         """Get the shape of the weight matrix `W`.
