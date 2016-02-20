@@ -362,13 +362,14 @@ def batch_norm(layer, **kwargs):
     ['InputLayer', 'DenseLayer', 'BatchNormLayer', 'NonlinearityLayer']
     """
     nonlinearity = getattr(layer, 'nonlinearity', None)
+    name         = getattr(layer, 'name' )
     if nonlinearity is not None:
         layer.nonlinearity = nonlinearities.identity
     if hasattr(layer, 'b') and layer.b is not None:
         del layer.params[layer.b]
         layer.b = None
-    layer = BatchNormLayer(layer, **kwargs)
+    layer = BatchNormLayer(layer, name= 'bn_'+name, **kwargs)
     if nonlinearity is not None:
         from .special import NonlinearityLayer
-        layer = NonlinearityLayer(layer, nonlinearity)
+        layer = NonlinearityLayer(layer, nonlinearity, name = 'bn_nonlinearity_'+name )
     return layer
