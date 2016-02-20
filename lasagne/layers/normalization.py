@@ -368,8 +368,8 @@ def batch_norm(layer, **kwargs):
     if hasattr(layer, 'b') and layer.b is not None:
         del layer.params[layer.b]
         layer.b = None
-    layer = BatchNormLayer(layer, name= 'bn_'+name, **kwargs)
+    layer = BatchNormLayer(layer, name= 'batch_norm_'+name, **kwargs)
     if nonlinearity is not None:
         from .special import NonlinearityLayer
-        layer = NonlinearityLayer(layer, nonlinearity, name = 'bn_nonlinearity_'+name )
+        layer = NonlinearityLayer(layer, nonlinearity, name = 'nonlinearity_'+name )
     return layer
