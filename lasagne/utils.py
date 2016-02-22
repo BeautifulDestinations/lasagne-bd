@@ -323,6 +323,7 @@ def create_param(spec, shape, name=None):
     support initialization with numpy arrays, existing Theano shared variables
     or expressions, and callables for generating initial parameter values.
     """
+#    print name
     shape = tuple(shape)  # convert to tuple if needed
     if any(d <= 0 for d in shape):
         raise ValueError((
