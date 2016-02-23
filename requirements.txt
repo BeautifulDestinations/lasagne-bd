@@ -1,6 +1,4 @@
 git+https://github.com/Theano/Theano.git@54186290#egg=Theano==0.8.git
--e git+https://github.com/Lasagne/Lasagne.git@b6f1250e#egg=Lasagne==0.2.git
--e git+https://github.com/Theano/Theano.git@15c90dd3#egg=Theano==0.8.git
 funcsigs==0.4             # via mock
 joblib==0.9.2
 matplotlib==1.4.3
