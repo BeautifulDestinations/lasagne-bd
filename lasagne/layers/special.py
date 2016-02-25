@@ -1069,6 +1069,32 @@ def rrelu(layer, **kwargs):
     return RandomizedRectifierLayer(layer, **kwargs)
 
 
+class SPPLayer2(Layer):
+    def __init__(self, incoming, **kwargs):
+        super(SPPLayer2, self).__init__(incoming, **kwargs)
+
+
+        # no divide is one max patch, this is achieved by just doing T.maximum after reshaping
+
+    def get_output_for(self, input, **kwargs):
+
+        # divide by 4 gives 16 patches
+        win1 = (int(np.floor(input.shape[2]/4.0)), int(np.floor(input.shape[3]/4.0)))
+        str1 = (int(np.ceil(input.shape[2]/4.0)), int(np.ceil(input.shape[3]/4.0)))
+
+        # divide by 2 gives 4 patches
+        win2 = (int(np.floor(input.shape[2]/2.0)), int(np.floor(input.shape[3]/2.0)))
+        str2 = (int(np.ceil(input.shape[2]/2.0)), int(np.ceil(input.shape[3]/2.0)))
+
+        p1 = T.reshape(dnn.dnn_pool(input, win1, str1), (input.shape[0], input.shape[1], 16))
+        p2 = T.reshape(dnn.dnn_pool(input, win2, str2), (input.shape[0], input.shape[1], 4))
+        r3 = T.reshape(input, (input.shape[0], input.shape[1], input.shape[2]*input.shape[3]))
+        p3 = T.reshape(T.max(r3, axis=2), (input.shape[0], input.shape[1], 1))
+        return T.concatenate((p1, p2, p3), axis=2)
+
+    def get_output_shape_for(self, input_shape):
+        return (input_shape[0], input_shape[1], 21)
+
 class SPPLayer(Layer):
     '''
     Spatial Pyramid Pooling Layer.
@@ -1111,3 +1137,4 @@ class SPPLayer(Layer):
         # (batch_size, num_filters, 3*3+2*2+1*1=14 )
         # There are ( 14 * input_shape[1] ) features 
         return (input_shape[0], input_shape[1], 14 )
+
