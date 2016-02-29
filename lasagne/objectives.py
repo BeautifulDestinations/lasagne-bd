@@ -75,6 +75,7 @@ without dropout or any other nondeterministic computation in between:
 This gives a loss expression good for monitoring validation error.
 """
 
+import theano.tensor
 import theano.tensor.nnet
 
 from lasagne.layers import get_output
@@ -89,7 +90,6 @@ __all__ = [
     "binary_accuracy",
     "categorical_accuracy"
 ]
-
 
 def binary_crossentropy(predictions, targets):
     """Computes the binary cross-entropy between predictions and targets.
@@ -188,7 +188,7 @@ def weighted_squared_error(a, b):
     This is the loss function of choice for many regression problems
     or auto-encoders with linear output units.
     """
-    return ( 1. + math.abs( b ) ) * squared_error( a,b )
+    return ( 1. + theano.tensor.abs_( b ) ) * squared_error( a,b )
 
 
 def aggregate(loss, weights=None, mode='mean'):

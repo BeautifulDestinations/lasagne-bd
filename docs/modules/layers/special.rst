@@ -11,6 +11,11 @@ Special-purpose layers
 .. autoclass:: BiasLayer
    :members:
 
+.. autoclass:: ScaleLayer
+   :members:
+
+.. autofunction:: standardize
+
 .. autoclass:: ExpressionLayer
    :members:
 
@@ -20,8 +25,16 @@ Special-purpose layers
 .. autoclass:: TransformerLayer
     :members:
 
+.. autoclass:: TPSTransformerLayer
+    :members:
+
 .. autoclass:: ParametricRectifierLayer
     :members:
 
 .. autofunction:: prelu
+
+.. autoclass:: RandomizedRectifierLayer
+    :members:
+
+.. autofunction:: rrelu
 

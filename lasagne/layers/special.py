@@ -1,20 +1,29 @@
 import theano
 import theano.tensor as T
+import numpy as np
 
 from .. import init
 from .. import nonlinearities
-from ..utils import as_tuple
+from ..utils import as_tuple, floatX
+from ..random import get_rng
 from .base import Layer, MergeLayer
-
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.sandbox.cuda import dnn
 
 __all__ = [
     "NonlinearityLayer",
     "BiasLayer",
+    "ScaleLayer",
+    "standardize",
     "ExpressionLayer",
     "InverseLayer",
     "TransformerLayer",
+    "TPSTransformerLayer",
     "ParametricRectifierLayer",
     "prelu",
+    "RandomizedRectifierLayer",
+    "rrelu",
+    "SPPLayer",
 ]
 
 
@@ -110,6 +119,123 @@ class BiasLayer(Layer):
             return input + self.b.dimshuffle(*pattern)
         else:
             return input
+
+
+class ScaleLayer(Layer):
+    """
+    lasagne.layers.ScaleLayer(incoming, scales=lasagne.init.Constant(1),
+    shared_axes='auto', **kwargs)
+
+    A layer that scales its inputs by learned coefficients.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape
+
+    scales : Theano shared variable, expression, numpy array, or callable
+        Initial value, expression or initializer for the scale.  The scale
+        shape must match the incoming shape, skipping those axes the scales are
+        shared over (see the example below).  See
+        :func:`lasagne.utils.create_param` for more information.
+
+    shared_axes : 'auto', int or tuple of int
+        The axis or axes to share scales over. If ``'auto'`` (the default),
+        share over all axes except for the second: this will share scales over
+        the minibatch dimension for dense layers, and additionally over all
+        spatial dimensions for convolutional layers.
+
+    Notes
+    -----
+    The scales parameter dimensionality is the input dimensionality minus the
+    number of axes the scales are shared over, which matches the bias parameter
+    conventions of :class:`DenseLayer` or :class:`Conv2DLayer`. For example:
+
+    >>> layer = ScaleLayer((20, 30, 40, 50), shared_axes=(0, 2))
+    >>> layer.scales.get_value().shape
+    (30, 50)
+    """
+    def __init__(self, incoming, scales=init.Constant(1), shared_axes='auto',
+                 **kwargs):
+        super(ScaleLayer, self).__init__(incoming, **kwargs)
+
+        if shared_axes == 'auto':
+            # default: share scales over all but the second axis
+            shared_axes = (0,) + tuple(range(2, len(self.input_shape)))
+        elif isinstance(shared_axes, int):
+            shared_axes = (shared_axes,)
+        self.shared_axes = shared_axes
+
+        # create scales parameter, ignoring all dimensions in shared_axes
+        shape = [size for axis, size in enumerate(self.input_shape)
+                 if axis not in self.shared_axes]
+        if any(size is None for size in shape):
+            raise ValueError("ScaleLayer needs specified input sizes for "
+                             "all axes that scales are not shared over.")
+        self.scales = self.add_param(
+            scales, shape, 'scales', regularizable=False)
+
+    def get_output_for(self, input, **kwargs):
+        axes = iter(range(self.scales.ndim))
+        pattern = ['x' if input_axis in self.shared_axes
+                   else next(axes) for input_axis in range(input.ndim)]
+        return input * self.scales.dimshuffle(*pattern)
+
+
+def standardize(layer, offset, scale, shared_axes='auto'):
+    """
+    Convenience function for standardizing inputs by applying a fixed offset
+    and scale.  This is usually useful when you want the input to your network
+    to, say, have zero mean and unit standard deviation over the feature
+    dimensions.  This layer allows you to include the appropriate statistics to
+    achieve this normalization as part of your network, and applies them to its
+    input.  The statistics are supplied as the `offset` and `scale` parameters,
+    which are applied to the input by subtracting `offset` and dividing by
+    `scale`, sharing dimensions as specified by the `shared_axes` argument.
+
+    Parameters
+    ----------
+    layer : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape.
+    offset : Theano shared variable or numpy array
+        The offset to apply (via subtraction) to the axis/axes being
+        standardized.
+    scale : Theano shared variable or numpy array
+        The scale to apply (via division) to the axis/axes being standardized.
+    shared_axes : 'auto', int or tuple of int
+        The axis or axes to share the offset and scale over. If ``'auto'`` (the
+        default), share over all axes except for the second: this will share
+        scales over the minibatch dimension for dense layers, and additionally
+        over all spatial dimensions for convolutional layers.
+
+    Examples
+    --------
+    Assuming your training data exists in a 2D numpy ndarray called
+    ``training_data``, you can use this function to scale input features to the
+    [0, 1] range based on the training set statistics like so:
+
+    >>> import lasagne
+    >>> import numpy as np
+    >>> training_data = np.random.standard_normal((100, 20))
+    >>> input_shape = (None, training_data.shape[1])
+    >>> l_in = lasagne.layers.InputLayer(input_shape)
+    >>> offset = training_data.min(axis=0)
+    >>> scale = training_data.max(axis=0) - training_data.min(axis=0)
+    >>> l_std = standardize(l_in, offset, scale, shared_axes=0)
+
+    Alternatively, to z-score your inputs based on training set statistics, you
+    could set ``offset = training_data.mean(axis=0)`` and
+    ``scale = training_data.std(axis=0)`` instead.
+    """
+    # Subtract the offset
+    layer = BiasLayer(layer, -offset, shared_axes)
+    # Do not optimize the offset parameter
+    layer.params[layer.b].remove('trainable')
+    # Divide by the scale
+    layer = ScaleLayer(layer, floatX(1.)/scale, shared_axes)
+    # Do not optimize the scales parameter
+    layer.params[layer.scales].remove('trainable')
+    return layer
 
 
 class ExpressionLayer(Layer):
@@ -253,9 +379,10 @@ class TransformerLayer(MergeLayer):
 
     References
     ----------
-    .. [1]  Spatial Transformer Networks
-            Max Jaderberg, Karen Simonyan, Andrew Zisserman, Koray Kavukcuoglu
-            Submitted on 5 Jun 2015
+    .. [1]  Max Jaderberg, Karen Simonyan, Andrew Zisserman,
+            Koray Kavukcuoglu (2015):
+            Spatial Transformer Networks. NIPS 2015,
+            http://papers.nips.cc/paper/5854-spatial-transformer-networks.pdf
 
     Examples
     --------
@@ -302,10 +429,10 @@ class TransformerLayer(MergeLayer):
     def get_output_for(self, inputs, **kwargs):
         # see eq. (1) and sec 3.1 in [1]
         input, theta = inputs
-        return _transform(theta, input, self.downsample_factor)
+        return _transform_affine(theta, input, self.downsample_factor)
 
 
-def _transform(theta, input, downsample_factor):
+def _transform_affine(theta, input, downsample_factor):
     num_batch, num_channels, height, width = input.shape
     theta = T.reshape(theta, (-1, 2, 3))
 
@@ -421,6 +548,294 @@ def _meshgrid(height, width):
     return grid
 
 
+class TPSTransformerLayer(MergeLayer):
+    """
+    Spatial transformer layer
+
+    The layer applies a thin plate spline transformation [2]_ on the input
+    as in [1]_. The thin plate spline transform is determined based on the
+    movement of some number of control points. The starting positions for
+    these control points are fixed. The output is interpolated with a
+    bilinear transformation.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape. The
+        output of this layer should be a 4D tensor, with shape
+        ``(batch_size, num_input_channels, input_rows, input_columns)``.
+
+    localization_network : a :class:`Layer` instance
+        The network that calculates the parameters of the thin plate spline
+        transformation as the x and y coordinates of the destination offsets of
+        each control point. The output of the localization network  should
+        be a 2D tensor, with shape ``(batch_size, 2 * num_control_points)``
+
+    downsample_factor : float or iterable of float
+        A float or a 2-element tuple specifying the downsample factor for the
+        output image (in both spatial dimensions). A value of 1 will keep the
+        original size of the input. Values larger than 1 will downsample the
+        input. Values below 1 will upsample the input.
+
+    control_points : integer
+        The number of control points to be used for the thin plate spline
+        transformation. These points will be arranged as a grid along the
+        image, so the value must be a perfect square. Default is 16.
+
+    References
+    ----------
+    .. [1]  Max Jaderberg, Karen Simonyan, Andrew Zisserman,
+            Koray Kavukcuoglu (2015):
+            Spatial Transformer Networks. NIPS 2015,
+            http://papers.nips.cc/paper/5854-spatial-transformer-networks.pdf
+    .. [2]  Fred L. Bookstein (1989):
+            Principal warps: thin-plate splines and the decomposition of
+            deformations. IEEE Transactions on
+            Pattern Analysis and Machine Intelligence.
+            http://doi.org/10.1109/34.24792
+
+    Examples
+    --------
+    Here, we'll implement an identity transform using a thin plate spline
+    transform. First we'll create the destination control point offsets. To
+    make everything invariant to the shape of the image, the x and y range
+    of the image is normalized to [-1, 1] as in ref [1]_. To replicate an
+    identity transform, we'll set the bias to have all offsets be 0. More
+    complicated transformations can easily be implemented using different x
+    and y offsets (importantly, each control point can have it's own pair of
+    offsets).
+
+    >>> import numpy as np
+    >>> import lasagne
+    >>>
+    >>> # Create the network
+    >>> # we'll initialize the weights and biases to zero, so it starts
+    >>> # as the identity transform (all control point offsets are zero)
+    >>> W = b = lasagne.init.Constant(0.0)
+    >>>
+    >>> # Set the number of points
+    >>> num_points = 16
+    >>>
+    >>> l_in = lasagne.layers.InputLayer((None, 3, 28, 28))
+    >>> l_loc = lasagne.layers.DenseLayer(l_in, num_units=2*num_points,
+    ...                                   W=W, b=b, nonlinearity=None)
+    >>> l_trans = lasagne.layers.TPSTransformerLayer(l_in, l_loc,
+    ...                                          control_points=num_points)
+    """
+
+    def __init__(self, incoming, localization_network, downsample_factor=1,
+                 control_points=16, **kwargs):
+        super(TPSTransformerLayer, self).__init__(
+                [incoming, localization_network], **kwargs)
+
+        self.downsample_factor = as_tuple(downsample_factor, 2)
+        self.control_points = control_points
+
+        input_shp, loc_shp = self.input_shapes
+
+        # Error checking
+        if loc_shp[-1] != 2 * control_points or len(loc_shp) != 2:
+            raise ValueError("The localization network must have "
+                             "output shape: (batch_size, "
+                             "2*control_points)")
+
+        if round(np.sqrt(control_points)) != np.sqrt(
+                control_points):
+            raise ValueError("The number of control points must be"
+                             " a perfect square.")
+
+        if len(input_shp) != 4:
+            raise ValueError("The input network must have a 4-dimensional "
+                             "output shape: (batch_size, num_input_channels, "
+                             "input_rows, input_columns)")
+
+        # Create source points and L matrix
+        self.source_points, self.L_inv = _initialize_tps(
+                control_points)
+
+    def get_output_shape_for(self, input_shapes):
+        shape = input_shapes[0]
+        factors = self.downsample_factor
+        return (shape[:2] + tuple(None if s is None else int(s / f)
+                                  for s, f in zip(shape[2:], factors)))
+
+    def get_output_for(self, inputs, **kwargs):
+        # see eq. (1) and sec 3.1 in [1]
+        # Get input and destination control points
+        input, dest_offsets = inputs
+        return _transform_thin_thin_plate_spline(dest_offsets,
+                                                 input,
+                                                 self.source_points,
+                                                 self.L_inv,
+                                                 self.downsample_factor)
+
+
+def _transform_thin_thin_plate_spline(dest_offsets, input, source_points,
+                                      L_inv, downsample_factor):
+    num_batch, num_channels, height, width = input.shape
+    num_control_points = source_points.shape[1]
+
+    # reshape destination offsets to be (num_batch, 2, num_control_points)
+    # and add to source_points
+    dest_points = source_points + T.reshape(
+            dest_offsets, (num_batch, 2, num_control_points))
+
+    # Solve as in ref [2]
+    coefficients = T.dot(dest_points, L_inv[:, 3:].T)
+
+    # Transformed grid
+    out_height = T.cast(height / downsample_factor[0], 'int64')
+    out_width = T.cast(width / downsample_factor[1], 'int64')
+    orig_grid = _meshgrid(out_height, out_width)
+    orig_grid = orig_grid[0:2, :]
+    orig_grid = T.tile(orig_grid, (num_batch, 1, 1))
+
+    # Transform each point on the source grid (image_size x image_size)
+    transformed_points = _get_transformed_points_tps(orig_grid, source_points,
+                                                     coefficients,
+                                                     num_control_points,
+                                                     num_batch)
+
+    # Get out new points
+    x_transformed = transformed_points[:, 0].flatten()
+    y_transformed = transformed_points[:, 1].flatten()
+
+    # dimshuffle input to  (bs, height, width, channels)
+    input_dim = input.dimshuffle(0, 2, 3, 1)
+    input_transformed = _interpolate(
+            input_dim, x_transformed, y_transformed,
+            out_height, out_width)
+
+    output = T.reshape(input_transformed,
+                       (num_batch, out_height, out_width, num_channels))
+    output = output.dimshuffle(0, 3, 1, 2)  # dimshuffle to conv format
+    return output
+
+
+def _get_transformed_points_tps(new_points, source_points, coefficients,
+                                num_points, batch_size):
+    """
+    Calculates the transformed points' value using the provided coefficients
+
+    :param new_points: num_batch x 2 x num_to_transform tensor
+    :param source_points: 2 x num_points array of source points
+    :param coefficients: coefficients (should be shape (num_batch, 2,
+        control_points + 3))
+    :param num_points: the number of points
+
+    :return: the x and y coordinates of each transformed point. Shape (
+        num_batch, 2, num_to_transform)
+    """
+
+    # Calculate the U function for the new point and each source point as in
+    # ref [2]
+    # The U function is simply U(r) = r^2 * log(r^2), where r^2 is the
+    # squared distance
+
+    # Calculate the squared dist between the new point and the source points
+    to_transform = new_points.dimshuffle(0, 'x', 1, 2)
+    stacked_transform = T.tile(to_transform, (1, num_points, 1, 1))
+    r_2 = T.sum(((stacked_transform - source_points.dimshuffle('x', 1, 0,
+                                                               'x')) ** 2),
+                axis=2)
+
+    # Take the product (r^2 * log(r^2)), being careful to avoid NaNs
+    log_r_2 = T.log(r_2)
+    distances = T.switch(T.isnan(log_r_2), r_2 * log_r_2, 0.)
+
+    # Add in the coefficients for the affine translation (1, x, and y,
+    # corresponding to a_1, a_x, and a_y)
+    upper_array = T.concatenate([T.ones((batch_size, 1, new_points.shape[2]),
+                                        dtype=theano.config.floatX),
+                                 new_points], axis=1)
+    right_mat = T.concatenate([upper_array, distances], axis=1)
+
+    # Calculate the new value as the dot product
+    new_value = T.batched_dot(coefficients, right_mat)
+    return new_value
+
+
+def _U_func_numpy(x1, y1, x2, y2):
+    """
+    Function which implements the U function from Bookstein paper
+    :param x1: x coordinate of the first point
+    :param y1: y coordinate of the first point
+    :param x2: x coordinate of the second point
+    :param y2: y coordinate of the second point
+    :return: value of z
+    """
+
+    # Return zero if same point
+    if x1 == x2 and y1 == y2:
+        return 0.
+
+    # Calculate the squared Euclidean norm (r^2)
+    r_2 = (x2 - x1) ** 2 + (y2 - y1) ** 2
+
+    # Return the squared norm (r^2 * log r^2)
+    return r_2 * np.log(r_2)
+
+
+def _initialize_tps(num_control_points):
+    """
+    Initializes the thin plate spline calculation by creating the source
+    point array and the inverted L matrix used for calculating the
+    transformations as in ref [2]_
+
+    :param num_control_points: the number of control points. Must be a
+    perfect square. Points will be used to generate an evenly spaced grid.
+    :return:
+        source_points: shape (2, num_control_points) tensor
+        L_inv: shape (num_control_points + 3, num_control_points + 3) tensor
+    """
+
+    # Create source grid
+    grid_size = np.sqrt(num_control_points)
+    x_control_source, y_control_source = np.meshgrid(
+        np.linspace(-1, 1, grid_size),
+        np.linspace(-1, 1, grid_size))
+
+    # Create 2 x num_points array of source points
+    source_points = np.vstack(
+            (x_control_source.flatten(), y_control_source.flatten()))
+
+    # Get number of equations
+    num_equations = num_control_points + 3
+
+    # Initialize L to be num_equations square matrix
+    L = np.zeros((num_equations, num_equations))
+
+    # Create P matrix components
+    L[0, 3:num_equations] = 1.
+    L[1:3, 3:num_equations] = source_points
+    L[3:num_equations, 0] = 1.
+    L[3:num_equations, 1:3] = source_points.T
+
+    # Loop through each pair of points and create the K matrix
+    for point_1 in range(num_control_points):
+        for point_2 in range(point_1, num_control_points):
+
+            L[point_1 + 3, point_2 + 3] = _U_func_numpy(
+                    source_points[0, point_1], source_points[1, point_1],
+                    source_points[0, point_2], source_points[1, point_2])
+
+            if point_1 != point_2:
+                L[point_2 + 3, point_1 + 3] = L[point_1 + 3, point_2 + 3]
+
+    # Invert
+    L_inv = np.linalg.inv(L)
+
+    # Convert to floatX
+    L_inv = L_inv.astype(theano.config.floatX)
+    source_points = source_points.astype(theano.config.floatX)
+
+    # Convert to tensors
+    L_inv = T.as_tensor_variable(L_inv)
+    source_points = T.as_tensor_variable(source_points)
+
+    return source_points, L_inv
+
+
 class ParametricRectifierLayer(Layer):
     """
     lasagne.layers.ParametricRectifierLayer(incoming,
@@ -530,3 +945,196 @@ def prelu(layer, **kwargs):
     if nonlinearity is not None:
         layer.nonlinearity = nonlinearities.identity
     return ParametricRectifierLayer(layer, **kwargs)
+
+
+class RandomizedRectifierLayer(Layer):
+    """
+    A layer that applies a randomized leaky rectify nonlinearity to its input.
+
+    The randomized leaky rectifier was first proposed and used in the Kaggle
+    NDSB Competition, and later evaluated in [1]_. Compared to the standard
+    leaky rectifier :func:`leaky_rectify`, it has a randomly sampled slope
+    for negative input during training, and a fixed slope during evaluation.
+
+    Equation for the randomized rectifier linear unit during training:
+    :math:`\\varphi(x) = \\max((\\sim U(lower, upper)) \\cdot x, x)`
+
+    During evaluation, the factor is fixed to the arithmetic mean of `lower`
+    and `upper`.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape
+
+    lower : Theano shared variable, expression, or constant
+        The lower bound for the randomly chosen slopes.
+
+    upper : Theano shared variable, expression, or constant
+        The upper bound for the randomly chosen slopes.
+
+    shared_axes : 'auto', 'all', int or tuple of int
+        The axes along which the random slopes of the rectifier units are
+        going to be shared. If ``'auto'`` (the default), share over all axes
+        except for the second - this will share the random slope over the
+        minibatch dimension for dense layers, and additionally over all
+        spatial dimensions for convolutional layers. If ``'all'``, share over
+        all axes, thus using a single random slope.
+
+    **kwargs
+        Any additional keyword arguments are passed to the `Layer` superclass.
+
+     References
+    ----------
+    .. [1] Bing Xu, Naiyan Wang et al. (2015):
+       Empirical Evaluation of Rectified Activations in Convolutional Network,
+       http://arxiv.org/abs/1505.00853
+    """
+    def __init__(self, incoming, lower=0.3, upper=0.8, shared_axes='auto',
+                 **kwargs):
+        super(RandomizedRectifierLayer, self).__init__(incoming, **kwargs)
+        self._srng = RandomStreams(get_rng().randint(1, 2147462579))
+        self.lower = lower
+        self.upper = upper
+
+        if not isinstance(lower > upper, theano.Variable) and lower > upper:
+            raise ValueError("Upper bound for RandomizedRectifierLayer needs "
+                             "to be higher than lower bound.")
+
+        if shared_axes == 'auto':
+            self.shared_axes = (0,) + tuple(range(2, len(self.input_shape)))
+        elif shared_axes == 'all':
+            self.shared_axes = tuple(range(len(self.input_shape)))
+        elif isinstance(shared_axes, int):
+            self.shared_axes = (shared_axes,)
+        else:
+            self.shared_axes = shared_axes
+
+    def get_output_for(self, input, deterministic=False, **kwargs):
+        """
+        Parameters
+        ----------
+        input : tensor
+            output from the previous layer
+        deterministic : bool
+            If true, the arithmetic mean of lower and upper are used for the
+            leaky slope.
+        """
+        if deterministic or self.upper == self.lower:
+            return theano.tensor.nnet.relu(input, (self.upper+self.lower)/2.0)
+        else:
+            shape = list(self.input_shape)
+            if any(s is None for s in shape):
+                shape = list(input.shape)
+            for ax in self.shared_axes:
+                shape[ax] = 1
+
+            rnd = self._srng.uniform(tuple(shape),
+                                     low=self.lower,
+                                     high=self.upper,
+                                     dtype=theano.config.floatX)
+            rnd = theano.tensor.addbroadcast(rnd, *self.shared_axes)
+            return theano.tensor.nnet.relu(input, rnd)
+
+
+def rrelu(layer, **kwargs):
+    """
+    Convenience function to apply randomized rectify to a given layer's output.
+    Will set the layer's nonlinearity to identity if there is one and will
+    apply the randomized rectifier instead.
+
+    Parameters
+    ----------
+    layer: a :class:`Layer` instance
+        The `Layer` instance to apply the randomized rectifier layer to;
+        note that it will be irreversibly modified as specified above
+
+    **kwargs
+        Any additional keyword arguments are passed to the
+        :class:`RandomizedRectifierLayer`
+
+    Examples
+    --------
+    Note that this function modifies an existing layer, like this:
+    >>> from lasagne.layers import InputLayer, DenseLayer, rrelu
+    >>> layer = InputLayer((32, 100))
+    >>> layer = DenseLayer(layer, num_units=200)
+    >>> layer = rrelu(layer)
+
+    In particular, :func:`rrelu` can *not* be passed as a nonlinearity.
+    """
+    nonlinearity = getattr(layer, 'nonlinearity', None)
+    if nonlinearity is not None:
+        layer.nonlinearity = nonlinearities.identity
+    return RandomizedRectifierLayer(layer, **kwargs)
+
+
+class SPPLayer2(Layer):
+    def __init__(self, incoming, **kwargs):
+        super(SPPLayer2, self).__init__(incoming, **kwargs)
+
+
+        # no divide is one max patch, this is achieved by just doing T.maximum after reshaping
+
+    def get_output_for(self, input, **kwargs):
+
+        # divide by 4 gives 16 patches
+        win1 = (int(np.floor(input.shape[2]/4.0)), int(np.floor(input.shape[3]/4.0)))
+        str1 = (int(np.ceil(input.shape[2]/4.0)), int(np.ceil(input.shape[3]/4.0)))
+
+        # divide by 2 gives 4 patches
+        win2 = (int(np.floor(input.shape[2]/2.0)), int(np.floor(input.shape[3]/2.0)))
+        str2 = (int(np.ceil(input.shape[2]/2.0)), int(np.ceil(input.shape[3]/2.0)))
+
+        p1 = T.reshape(dnn.dnn_pool(input, win1, str1), (input.shape[0], input.shape[1], 16))
+        p2 = T.reshape(dnn.dnn_pool(input, win2, str2), (input.shape[0], input.shape[1], 4))
+        r3 = T.reshape(input, (input.shape[0], input.shape[1], input.shape[2]*input.shape[3]))
+        p3 = T.reshape(T.max(r3, axis=2), (input.shape[0], input.shape[1], 1))
+        return T.concatenate((p1, p2, p3), axis=2)
+
+    def get_output_shape_for(self, input_shape):
+        return (input_shape[0], input_shape[1], 21)
+
+class SPPLayer(Layer):
+    '''
+    Spatial Pyramid Pooling Layer.
+    It pools the convolution output of an image of arbitrary size into an array of fixed length.
+    This allows the dense part of the network to be fixed whereas
+    the input dimensions of the image may vary.
+
+    This implementation is a 3-level SPP.
+    Different implementations are possible
+    '''
+    def __init__(self, incoming, **kwargs):
+        super(SPPLayer, self).__init__(incoming, **kwargs)
+ 
+    def get_output_for(self, input, **kwargs):
+        win1 = ( T.cast( T.floor( T.shape( input )[ 2 ] / 3. ), 'int32' ), \
+                 T.cast( T.floor( T.shape( input )[ 3 ] / 3. ), 'int32' ) )
+        str1 = ( T.cast( T.ceil(  T.shape( input )[ 2 ] / 3. ), 'int32' ), \
+                 T.cast( T.ceil(  T.shape( input )[ 3 ] / 3. ), 'int32' ) )
+
+        win2 = ( T.cast( T.floor( T.shape( input )[ 2 ] / 2. ), 'int32' ), \
+                 T.cast( T.floor( T.shape( input )[ 3 ] / 2. ), 'int32' ) )
+        str2 = ( T.cast( T.ceil(  T.shape( input )[ 2 ] / 2. ), 'int32' ), \
+                 T.cast( T.ceil(  T.shape( input )[ 3 ] / 2. ), 'int32' ) )
+
+        win3 = ( T.cast( T.floor( T.shape( input )[ 2 ] / 1. ), 'int32' ), \
+                 T.cast( T.floor( T.shape( input )[ 3 ] / 1. ), 'int32' ) )
+        str3 = ( T.cast( T.ceil(  T.shape( input )[ 2 ] / 1. ), 'int32' ), \
+                 T.cast( T.ceil(  T.shape( input )[ 3 ] / 1. ), 'int32' ) )
+
+        # 3x3
+        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) )
+        # 2x2
+        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) )
+        # 1x1
+        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) )
+
+        return T.concatenate((p1, p2, p3), axis=2)
+
+    def get_output_shape_for(self, input_shape):
+        # (batch_size, num_filters, 3*3+2*2+1*1=14 )
+        # There are ( 14 * input_shape[1] ) features 
+        return (input_shape[0], input_shape[1], 14 )
+

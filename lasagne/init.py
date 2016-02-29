@@ -114,7 +114,7 @@ class Glorot(Initializer):
     gain : float or 'relu'
         Scaling factor for the weights. Set this to ``1.0`` for linear and
         sigmoid units, to 'relu' or ``sqrt(2)`` for rectified linear units, and
-        to ``sqrt(2/(1+alpha**2)`` for leaky rectified linear units with
+        to ``sqrt(2/(1+alpha**2))`` for leaky rectified linear units with
         leakiness ``alpha``. Other transfer functions may need different
         factors.
     c01b : bool
@@ -135,7 +135,7 @@ class Glorot(Initializer):
     and ``initializer=Uniform``, the weights are initialized as
 
     .. math::
-       a &= \\sqrt{\\frac{6}{fan_{in}+fan_{out}}}\\\\
+       a &= \\sqrt{\\frac{12}{fan_{in}+fan_{out}}}\\\\
        W &\sim U[-a, a]
 
     If ``gain=1`` and ``initializer=Normal``, the weights are initialized as
@@ -210,7 +210,7 @@ class He(Initializer):
     gain : float or 'relu'
         Scaling factor for the weights. Set this to ``1.0`` for linear and
         sigmoid units, to 'relu' or ``sqrt(2)`` for rectified linear units, and
-        to ``sqrt(2/(1+alpha**2)`` for leaky rectified linear units with
+        to ``sqrt(2/(1+alpha**2))`` for leaky rectified linear units with
         leakiness ``alpha``. Other transfer functions may need different
         factors.
     c01b : bool
@@ -337,7 +337,7 @@ class Orthogonal(Initializer):
     gain : float or 'relu'
         Scaling factor for the weights. Set this to ``1.0`` for linear and
         sigmoid units, to 'relu' or ``sqrt(2)`` for rectified linear units, and
-        to ``sqrt(2/(1+alpha**2)`` for leaky rectified linear units with
+        to ``sqrt(2/(1+alpha**2))`` for leaky rectified linear units with
         leakiness ``alpha``. Other transfer functions may need different
         factors.
 
