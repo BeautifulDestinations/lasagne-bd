@@ -1125,13 +1125,13 @@ class SPPLayer(Layer):
                  T.cast( T.ceil(  T.shape( input )[ 3 ] / 1. ), 'int32' ) )
 
         # 3x3
-        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) )
+        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
         # 2x2
-        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) )
+        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
         # 1x1
-        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) )
+        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
 
-        return T.concatenate((p1, p2, p3), axis=2)
+        return T.concatenate((p1, p2, p3), axis=1)
 
     def get_output_shape_for(self, input_shape):
         # (batch_size, num_filters, 3*3+2*2+1*1=14 )
