@@ -9,6 +9,7 @@ from ..random import get_rng
 from .base import Layer, MergeLayer
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from theano.sandbox.cuda import dnn
+from theano import printing
 
 __all__ = [
     "NonlinearityLayer",
@@ -26,6 +27,8 @@ __all__ = [
     "SPPLayer",
 ]
 
+def Print( name, variable ):
+    return printing.Print( name )(variable )
 
 class NonlinearityLayer(Layer):
     """
@@ -1109,28 +1112,45 @@ class SPPLayer(Layer):
         super(SPPLayer, self).__init__(incoming, **kwargs)
  
     def get_output_for(self, input, **kwargs):
-        win1 = ( T.cast( T.floor( T.shape( input )[ 2 ] / 3. ), 'int32' ), \
-                 T.cast( T.floor( T.shape( input )[ 3 ] / 3. ), 'int32' ) )
-        str1 = ( T.cast( T.ceil(  T.shape( input )[ 2 ] / 3. ), 'int32' ), \
-                 T.cast( T.ceil(  T.shape( input )[ 3 ] / 3. ), 'int32' ) )
+        win1 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / 3. ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / 3. ), 'int32' ) )
+        str1 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / 3. ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / 3. ), 'int32' ) )
 
-        win2 = ( T.cast( T.floor( T.shape( input )[ 2 ] / 2. ), 'int32' ), \
-                 T.cast( T.floor( T.shape( input )[ 3 ] / 2. ), 'int32' ) )
-        str2 = ( T.cast( T.ceil(  T.shape( input )[ 2 ] / 2. ), 'int32' ), \
-                 T.cast( T.ceil(  T.shape( input )[ 3 ] / 2. ), 'int32' ) )
+        win2 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / 2. ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / 2. ), 'int32' ) )
+        str2 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / 2. ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / 2. ), 'int32' ) )
 
-        win3 = ( T.cast( T.floor( T.shape( input )[ 2 ] / 1. ), 'int32' ), \
-                 T.cast( T.floor( T.shape( input )[ 3 ] / 1. ), 'int32' ) )
-        str3 = ( T.cast( T.ceil(  T.shape( input )[ 2 ] / 1. ), 'int32' ), \
-                 T.cast( T.ceil(  T.shape( input )[ 3 ] / 1. ), 'int32' ) )
+        win3 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / 1. ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / 1. ), 'int32' ) )
+        str3 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / 1. ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / 1. ), 'int32' ) )
+
+#        win10 =  Print( 'win10', win1[0] ) 
+#        win11 =  Print( 'win11', win1[1] ) 
+#        str10 =  Print( 'str10', str1[0] ) 
+#        str11 =  Print( 'str11', str1[1] )
+#
+#        win20 =  Print( 'win20', win2[0] ) 
+#        win21 =  Print( 'win21', win2[1] ) 
+#        str20 =  Print( 'str20', str2[0] ) 
+#        str21 =  Print( 'str21', str2[1] )
+#
+#        win30 =  Print( 'win30', win3[0] ) 
+#        win31 =  Print( 'win31', win3[1] ) 
+#        str30 =  Print( 'str30', str3[0] ) 
+#        str31 =  Print( 'str31', str3[1] )
 
         # 3x3
         p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
+#        p1 = Print( 'p1', p1 )
         # 2x2
         p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
+#        p2 = Print( 'p2', p2 )
         # 1x1
         p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
-
+#        p3 = Print( 'p3', p3 )
         return T.concatenate((p1, p2, p3), axis=1)
 
     def get_output_shape_for(self, input_shape):
