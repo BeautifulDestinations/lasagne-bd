@@ -1158,3 +1158,52 @@ class SPPLayer(Layer):
         # There are ( 14 * input_shape[1] ) features 
         return (input_shape[0], input_shape[1], 14 )
 
+class SPPLayer_4level(Layer):
+    '''
+    Spatial Pyramid Pooling Layer.
+    It pools the convolution output of an image of arbitrary size into an array of fixed length.
+    This allows the dense part of the network to be fixed whereas
+    the input dimensions of the image may vary.
+
+    This implementation is a 4-level SPP.
+    Different implementations are possible
+    '''
+    def __init__(self, incoming, nbins = [6,3,2,1], **kwargs):
+        super(SPPLayer, self).__init__(incoming, **kwargs)
+        assert len( nbins == 4 ), 'This is a 4-level SPP.'
+        self.nbins = nbins
+ 
+    def get_output_for(self, input, **kwargs):
+        win0 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / self.nbins[0] ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / self.nbins[0] ), 'int32' ) )
+        str0 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[0] ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[0] ), 'int32' ) )
+
+        win1 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / self.nbins[1] ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / self.nbins[1] ), 'int32' ) )
+        str1 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[1] ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[1] ), 'int32' ) )
+
+        win2 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / self.nbins[2] ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / self.nbins[2] ), 'int32' ) )
+        str2 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[2] ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[2] ), 'int32' ) )
+
+        win3 = ( T.cast( T.ceil( T.shape( input )[ 2 ] / self.nbins[3] ), 'int32' ), \
+                 T.cast( T.ceil( T.shape( input )[ 3 ] / self.nbins[3] ), 'int32' ) )
+        str3 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[3] ), 'int32' ), \
+                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[3] ), 'int32' ) )
+
+        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
+        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
+        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
+        p4 = dnn.dnn_pool( input, win4, str4, 'max', (0,0) ).flatten( 2 )
+        return T.concatenate((p1, p2, p3, p4), axis=1)
+
+    def get_output_shape_for(self, input_shape):
+        # (batch_size, num_filters, 3*3+2*2+1*1=14 )
+        # There are ( 14 * input_shape[1] ) features
+        N_features = 0
+        for n in nbins:
+            N_features += n*n 
+        return (input_shape[0], input_shape[1], N_features )
