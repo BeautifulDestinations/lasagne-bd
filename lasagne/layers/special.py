@@ -1085,34 +1085,38 @@ class SPPLayer_3level(Layer):
     def __init__(self, incoming, nbins=[4,2,1], **kwargs):
         super(SPPLayer_3level, self).__init__(incoming, **kwargs)
         assert len(nbins) == 3 , 'This is a 3 level pyramid'
+        N_features = 0
+        for n in nbins:
+            N_features += n*n
+        self.N_features = N_features
         self.nbins = nbins
  
     def get_output_for(self, input, **kwargs):
-        win1 = ( T.cast( T.ceil( T.shape( input )[ 2 ]   / self.nbins[0]  ), 'int32' ), \
-                 T.cast( T.ceil( T.shape( input )[ 3 ]   / self.nbins[0]  ), 'int32' ) )
-        str1 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[0]  ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[0]  ), 'int32' ) )
+        win1 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
+        str1 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
+ 
+        win2 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
+        str2 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
 
-        win2 = ( T.cast( T.ceil( T.shape( input )[ 2 ]   / self.nbins[1]  ), 'int32' ), \
-                 T.cast( T.ceil( T.shape( input )[ 3 ]   / self.nbins[1]  ), 'int32' ) )
-        str2 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[1]  ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[1]  ), 'int32' ) )
-
-        win3 = ( T.cast( T.ceil( T.shape( input )[ 2 ]   / self.nbins[2]  ), 'int32' ), \
-                 T.cast( T.ceil( T.shape( input )[ 3 ]   / self.nbins[2]  ), 'int32' ) )
-        str3 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[2]  ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[2]  ), 'int32' ) )
+        win3 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
+        str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
 
         p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
         p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
         p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
-        return T.concatenate((p1, p2, p3), axis=1)
+
+        # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
+        # To prevent this we take only the amount of features that we expect.
+        return T.concatenate((p1, p2, p3), axis=1)[:,: T.shape( input )[1] * self.N_features]
 
     def get_output_shape_for(self, input_shape):
-        N_features = 0
-        for n in self.nbins:
-            N_features += n*n
-        return (input_shape[0], input_shape[1], N_features )
+        return (input_shape[0], input_shape[1], self.N_features )
 
 class SPPLayer_4level(Layer):
     '''
@@ -1124,40 +1128,45 @@ class SPPLayer_4level(Layer):
     This implementation is a 4-level SPP.
     Different implementations are possible
     '''
-    def __init__(self, incoming, nbins = [6,3,2,1], **kwargs):
-        super(SPPLayer_4level, self).__init__(incoming, **kwargs)
-        assert len( nbins == 4 ), 'This is a 4-level SPP.'
+    def __init__(self, incoming, nbins=[6,3,2,1], **kwargs):
+        super(SPPLayer_3level, self).__init__(incoming, **kwargs)
+        assert len(nbins) == 4 , 'This is a 4 level pyramid'
+        N_features = 0
+        for n in nbins:
+            N_features += n*n
+        self.N_features = N_features
         self.nbins = nbins
  
     def get_output_for(self, input, **kwargs):
-        win0 = ( T.cast( T.ceil(   T.shape( input )[ 2 ] / self.nbins[0] ), 'int32' ), \
-                 T.cast( T.ceil(   T.shape( input )[ 3 ] / self.nbins[0] ), 'int32' ) )
-        str0 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[0] ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[0] ), 'int32' ) )
+        win1 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
+        str1 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
+ 
+        win2 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
+        str2 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
 
-        win1 = ( T.cast( T.ceil(   T.shape( input )[ 2 ] / self.nbins[1] ), 'int32' ), \
-                 T.cast( T.ceil(   T.shape( input )[ 3 ] / self.nbins[1] ), 'int32' ) )
-        str1 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[1] ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[1] ), 'int32' ) )
+        win3 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
+        str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
 
-        win2 = ( T.cast( T.ceil(   T.shape( input )[ 2 ] / self.nbins[2] ), 'int32' ), \
-                 T.cast( T.ceil(   T.shape( input )[ 3 ] / self.nbins[2] ), 'int32' ) )
-        str2 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[2] ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[2] ), 'int32' ) )
-
-        win3 = ( T.cast( T.ceil(   T.shape( input )[ 2 ] / self.nbins[3] ), 'int32' ), \
-                 T.cast( T.ceil(   T.shape( input )[ 3 ] / self.nbins[3] ), 'int32' ) )
-        str3 = ( T.cast( T.floor(  T.shape( input )[ 2 ] / self.nbins[3] ), 'int32' ), \
-                 T.cast( T.floor(  T.shape( input )[ 3 ] / self.nbins[3] ), 'int32' ) )
+        win4 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[3]  ), 'int32' ), \
+                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[3]  ), 'int32' ) )
+        str4 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[3]  ), 'int32' ), \
+                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[3]  ), 'int32' ) )
 
         p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
         p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
         p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
         p4 = dnn.dnn_pool( input, win4, str4, 'max', (0,0) ).flatten( 2 )
-        return T.concatenate((p1, p2, p3, p4), axis=1)
+
+        # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
+        # To prevent this we take only the amount of features that we expect.
+        return T.concatenate((p1, p2, p3, p4), axis=1)[:,: T.shape( input )[1] * self.N_features]
 
     def get_output_shape_for(self, input_shape):
-        N_features = 0
-        for n in self.nbins:
-            N_features += n*n 
-        return (input_shape[0], input_shape[1], N_features )
+        return (input_shape[0], input_shape[1], self.N_features )
+
