@@ -322,7 +322,7 @@ class BatchNormLayer(Layer):
         return normalized
 
 
-def batch_norm(layer, **kwargs):
+def batch_norm(layer, *args, **kwargs):
     """
     Apply batch normalization to an existing layer. This is a convenience
     function modifying an existing layer to include batch normalization: It
@@ -361,6 +361,8 @@ def batch_norm(layer, **kwargs):
     >>> [l.__class__.__name__ for l in get_all_layers(l2)]
     ['InputLayer', 'DenseLayer', 'BatchNormLayer', 'NonlinearityLayer']
     """
+    old_bm = 'old_bm' in args
+        
     nonlinearity = getattr(layer, 'nonlinearity', None)
     name         = getattr(layer, 'name' )
     if nonlinearity is not None:
@@ -368,8 +370,15 @@ def batch_norm(layer, **kwargs):
     if hasattr(layer, 'b') and layer.b is not None:
         del layer.params[layer.b]
         layer.b = None
-    layer = BatchNormLayer(layer, name= 'batch_norm_'+name, **kwargs)
+    if old_bm:
+        layer = BatchNormLayer(layer, **kwargs)
+    else:
+        layer = BatchNormLayer(layer, name= 'batch_norm_'+name, **kwargs)
     if nonlinearity is not None:
         from .special import NonlinearityLayer
-        layer = NonlinearityLayer(layer, nonlinearity, name = 'nonlinearity_'+name )
+        if old_bm:
+            layer = NonlinearityLayer( layer, nonlinearity )
+        else:
+            layer = NonlinearityLayer(layer, nonlinearity, \
+                                        name = 'nonlinearity_'+name )
     return layer
