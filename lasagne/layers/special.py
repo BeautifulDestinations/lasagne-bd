@@ -1214,27 +1214,22 @@ class spp_container( Layer ):
         dim_y = T.shape( input )[3]
 
         aspect = T.cast( dim_y, 'float32' ) / dim_x
+
+        aspect_fct = theano.function( [input], aspect )
     
-        if2 = ifelse( T.lt( aspect, 0.9 ), \
+        if2 = ifelse( T.lt( aspect_fct(input), 0.9 ), \
                       self.spp2.get_output_for( input, **kwargs ), \
                       self.spp1.get_output_for( input, **kwargs ) )
         
-        if1 = ifelse( T.gt(aspect,1.1), \
+        if1 = ifelse( T.gt(aspect_fct(input),1.1), \
                       self.spp3.get_output_for( input, **kwargs ),
-                      if2( aspect ) )
+                      if2( aspect_fct(input) ) )
 
-        if_fct = theano.function( [input, aspect], if1,
+        if_fct = theano.function( [input], if1,
                                   mode = theano.Mode( linker = 'vm' ) )
 
-        pooled = if_fct( input, aspect )
-
+        pooled = if_fct( input )
         return pooled
 
     def get_output_shape( self, input_shape ):
         return( input_shape[0], input_shape[1], 21 )
-    
-
-
-
-        
-
