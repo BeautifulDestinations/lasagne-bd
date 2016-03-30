@@ -1170,3 +1170,71 @@ class SPPLayer_4level(Layer):
     def get_output_shape_for(self, input_shape):
         return (input_shape[0], input_shape[1], self.N_features )
 
+class SPP_cpu( Layer ):
+    def __init__( self, incoming, nbins = [4,2,1], 
+                                  image_x = 224,
+                                  image_y = 224,
+                                  **kwargs ):
+        super( SPP_cpu, self).__init__( self, incoming, **kwargs )
+        self.features = 0
+        self.nbins = nbins
+        self.image_x = image_x
+        self.image_y = image_y
+        for op in nbins:
+            self.features += op * op
+    
+    def get_output_for( self, input, **kwargs ):
+        poll_list = []
+        for op in self.nbins:
+            win_x = int( math.ceil( self.image_x / op ) )
+            win_y = int( math.ceil( self.image_y / op ) )
+            str_x = int( math.floor( self.image_x / op ) )
+            str_y = int( math.floor( self.image_y / op ) )
+
+            pool = pool_2d( input, (win_x,win_y), (str_x,str_y) ).flatten(2)
+
+            pool_list.append( pool )
+
+        return T.concatenate( pool_list, axis = 1 )
+
+    def get_output_shape( self, input_shape )
+        return( input_shape[0], input_shape[1], self.features )
+
+from theano.ifelse import ifelse
+
+class spp_container( Layer ):
+    def __init__( self, incoming, **kwargs ):
+        super( CPU_SPP, self ).__init( incoming, kwargs )
+        self.spp1 = SPP_cpu( incoming, image_x=224, image_y=224, **kwargs )
+        self.spp2 = SPP_cpu( incoming, image_x=224, image_y=267, **kwargs )
+        self.spp3 = SPP_cpu( incoming, image_x=187, image_y=224, **kwargs )
+
+    def get_output_for( self, input, **kwargs ):
+        dim_x = T.shape( input )[2]
+        dim_y = T.shape( input )[3]
+
+        aspect = T.cast( dim_y, 'float32' ) / dim_x
+    
+        if2 = ifelse( T.lt( aspect, 0.9 ), \
+                      self.spp2.get_output_for( input, **kwargs ), \
+                      self.spp1.get_output_for( input, **kwargs ) )
+        
+        if1 = ifelse( T.gt(aspect,1.1), \
+                      self.spp3.get_output_for( input, **kwargs ),
+                      if2( aspect ) )
+
+        if_fct = theano.function( [input, aspect], if1,
+                                  mode = theano.Mode( linker = 'vm' ) )
+
+        pooled = if_fct( input, aspect )
+
+        return pooled
+
+    def get_output_shape( self, input_shape ):
+        return( input_shape[0], input_shape[1], 21 )
+    
+
+
+
+        
+
