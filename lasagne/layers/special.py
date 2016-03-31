@@ -1107,13 +1107,13 @@ class SPPLayer_3level(Layer):
         str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
                  T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
 
-        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
-        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
-        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
+        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[0]*self.nbins[0] ]
+        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[1]*self.nbins[1] ]
+        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[2]*self.nbins[2] ]
 
         # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
         # To prevent this we take only the amount of features that we expect.
-        return T.concatenate((p1, p2, p3), axis=1)[:,: T.shape( input )[1] * self.N_features]
+        return T.concatenate((p1, p2, p3), axis=1)
 
     def get_output_shape_for(self, input_shape):
         return (input_shape[0], input_shape[1], self.N_features )
