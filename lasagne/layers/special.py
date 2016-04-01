@@ -1076,19 +1076,15 @@ def rrelu(layer, **kwargs):
         layer.nonlinearity = nonlinearities.identity
     return RandomizedRectifierLayer(layer, **kwargs)
 
-class SPPLayer_3level(Layer):
+class SPPLayer(Layer):
     '''
     Spatial Pyramid Pooling Layer.
     It pools the convolution output of an image of arbitrary size into an array of fixed length.
     This allows the dense part of the network to be fixed whereas
     the input dimensions of the image may vary.
-
-    This implementation is a 3-level SPP.
-    Different implementations are possible
     '''
     def __init__(self, incoming, nbins=[4,2,1], **kwargs):
-        super(SPPLayer_3level, self).__init__(incoming, **kwargs)
-        assert len(nbins) == 3 , 'This is a 3 level pyramid'
+        super(SPPLayer, self).__init__(incoming, **kwargs)
         N_features = 0
         for n in nbins:
             N_features += n*n
@@ -1096,84 +1092,35 @@ class SPPLayer_3level(Layer):
         self.nbins = nbins
  
     def get_output_for(self, input, **kwargs):
-        win1 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
-        str1 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
- 
-        win2 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
-        str2 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
+        dim_y = T.cast( T.shape( input )[2], 'float32' )
+        dim_x = T.cast( T.shape( input )[3], 'float32' )
 
-        win3 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
-        str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
+        pool_list = []
+        for n in self.nbins:
+            win_y = T.ceil( dim_y / n )
+            win_x = T.ceil( dim_x / n )
 
-        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
-        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
-        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
+            str_y = T.floor( dim_y / n )
+            str_x = T.floor( dim_x / n )
 
-        # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
-        # To prevent this we take only the amount of features that we expect.
-        return T.concatenate((p1, p2, p3), axis=1)[:,: T.shape( input )[1] * self.N_features]
+            win_y = T.cast( win_y, 'int32' )
+            win_x = T.cast( win_x, 'int32' )
 
-    def get_output_shape_for(self, input_shape):
-        return (input_shape[0], input_shape[1], self.N_features )
+            str_y = T.cast( str_y, 'int32' )
+            str_x = T.cast( str_x, 'int32' )
 
-class SPPLayer_4level(Layer):
-    '''
-    Spatial Pyramid Pooling Layer.
-    It pools the convolution output of an image of arbitrary size into an array of fixed length.
-    This allows the dense part of the network to be fixed whereas
-    the input dimensions of the image may vary.
+            pool = dnn.dnn_pool( input, (win_y,win_x),
+                                        (str_y,str_x),
+                                        'max', (0,0) )
+            pool = pool.flatten(2)
+            pool = pool[ :,:self.input_shape[1]*n*n ]
 
-    This implementation is a 4-level SPP.
-    Different implementations are possible
-    '''
-    def __init__(self, incoming, nbins=[6,3,2,1], **kwargs):
-        super(SPPLayer_3level, self).__init__(incoming, **kwargs)
-        assert len(nbins) == 4 , 'This is a 4 level pyramid'
-        N_features = 0
-        for n in nbins:
-            N_features += n*n
-        self.N_features = N_features
-        self.nbins = nbins
- 
-    def get_output_for(self, input, **kwargs):
-        win1 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
-        str1 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
- 
-        win2 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
-        str2 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
+            pool_list.append( pool )
 
-        win3 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
-        str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
-
-        win4 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[3]  ), 'int32' ), \
-                 T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[3]  ), 'int32' ) )
-        str4 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[3]  ), 'int32' ), \
-                 T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[3]  ), 'int32' ) )
-
-        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
-        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
-        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
-        p4 = dnn.dnn_pool( input, win4, str4, 'max', (0,0) ).flatten( 2 )
-
-        # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
-        # To prevent this we take only the amount of features that we expect.
-        return T.concatenate((p1, p2, p3, p4), axis=1)[:,: T.shape( input )[1] * self.N_features]
+        return T.concatenate( pool_list, axis=1)
 
     def get_output_shape_for(self, input_shape):
         return (input_shape[0], input_shape[1], self.N_features )
-
 
 class SPP_cpu( Layer ):
     def __init__( self, incoming, nbins = [4,2,1], 
@@ -1191,16 +1138,16 @@ class SPP_cpu( Layer ):
     def get_output_for( self, input, **kwargs ):
         pool_list = []
         for n in self.nbins:
-            win_x = int( math.ceil( self.image_x / n ) )
-            win_y = int( math.ceil( self.image_y / n ) )
-            str_x = int( math.floor( self.image_x / n ) )
-            str_y = int( math.floor( self.image_y / n ) )
+            win_x = int( math.ceil( self.patch_x / n ) )
+            win_y = int( math.ceil( self.patch_y / n ) )
+            str_x = int( math.floor( self.patch_x / n ) )
+            str_y = int( math.floor( self.patch_y / n ) )
 
             pool = pool_2d( input, \
                             ds = (win_y,win_x), \
                             st = (str_y,str_x),\
                             ignore_border = True
-                            ).flatten(2)[ :,:self.features * n*n ]
+                            ).flatten(2)[ :,:self.input_shape[1] * n*n ]
 
             pool_list.append( pool )
 
