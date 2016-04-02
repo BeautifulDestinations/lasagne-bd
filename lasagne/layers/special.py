@@ -27,7 +27,8 @@ __all__ = [
     "prelu",
     "RandomizedRectifierLayer",
     "rrelu",
-    "SPPLayer",
+    "SPPLayer_3level",
+    "SPPLayer_4level",
     "spp_container"
 ]
 
@@ -1112,7 +1113,7 @@ class SPPLayer(Layer):
                                         (str_y,str_x),
                                         'max', (0,0) )
             pool = pool.flatten(2)
-            #pool = pool[ :,:self.input_shape[1]*n*n ]
+            pool = pool[ :,:self.input_shape[1]*n*n ]
 
             pool_list.append( pool )
 
@@ -1146,7 +1147,7 @@ class SPP_cpu( Layer ):
                             ds = (win_y,win_x), \
                             st = (str_y,str_x),\
                             ignore_border = True
-                            ).flatten(2)#[ :,:self.input_shape[1] * n*n ]
+                            ).flatten(2)[ :,:self.input_shape[1] * n*n ]
 
             pool_list.append( pool )
 
