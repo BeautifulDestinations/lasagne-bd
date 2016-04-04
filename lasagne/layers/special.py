@@ -1,3 +1,4 @@
+import math
 import theano
 import theano.tensor as T
 import numpy as np
@@ -11,6 +12,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from theano.sandbox.cuda import dnn
 from theano import printing
 from theano.tensor.signal.pool import pool_2d
+from theano.ifelse import ifelse
 
 __all__ = [
     "NonlinearityLayer",
@@ -1171,7 +1173,7 @@ class SPPLayer_4level(Layer):
 
     def get_output_shape_for(self, input_shape):
         return (input_shape[0], input_shape[1], self.N_features )
-import math
+
 class SPP_cpu( Layer ):
     def __init__( self, incoming, nbins = [4,2,1], 
                                   image_x = 224,
@@ -1182,16 +1184,16 @@ class SPP_cpu( Layer ):
         self.nbins = nbins
         self.image_x = image_x
         self.image_y = image_y
-        for op in nbins:
-            self.features += op * op
+        for n in nbins:
+            self.features += n*n
     
     def get_output_for( self, input, **kwargs ):
         pool_list = []
-        for op in self.nbins:
-            win_x = int( math.ceil( self.image_x / op ) )
-            win_y = int( math.ceil( self.image_y / op ) )
-            str_x = int( math.floor( self.image_x / op ) )
-            str_y = int( math.floor( self.image_y / op ) )
+        for n in self.nbins:
+            win_x = int( math.ceil( self.image_x / n ) )
+            win_y = int( math.ceil( self.image_y / n ) )
+            str_x = int( math.floor( self.image_x / n ) )
+            str_y = int( math.floor( self.image_y / n ) )
 
             pool = pool_2d( input, \
                             ds = (win_y,win_x), \
@@ -1199,14 +1201,13 @@ class SPP_cpu( Layer ):
                             ignore_border = True
                             ).flatten(2)
 
+            pool = pool[ :,:T.shape( input )[1] * n*n ]
             pool_list.append( pool )
 
-        return T.concatenate( pool_list, axis = 1 )[:,:T.shape(input)[1] * 21 ]
+        return T.concatenate( pool_list, axis = 1 )#[:,:T.shape(input)[1] * 21 ]
 
     def get_output_shape_for( self, input_shape ):
-        return( input_shape[0], input_shape[1], 21 )
-
-from theano.ifelse import ifelse
+        return( input_shape[0], input_shape[1], features )
 
 class spp_container( Layer ):
     def __init__( self, incoming, **kwargs ):
@@ -1214,26 +1215,34 @@ class spp_container( Layer ):
         self.spp1 = SPP_cpu( incoming, image_x=14, image_y=14, name='spp1' )
         self.spp2 = SPP_cpu( incoming, image_x=14, image_y=12, name='spp2' )
         self.spp3 = SPP_cpu( incoming, image_x=12, image_y=14, name='spp3' )
+        self.spp4 = SPP_cpu( incoming, image_x=9,  image_y=14, name='spp4' )
+        self.spp5 = SPP_cpu( incoming, image_x=14, image_y=9,  name='spp5' )
 
     def get_output_for( self, input, **kwargs ):
         dim_x = T.shape( input )[3]
         dim_y = T.shape( input )[2]
 
+        dim_x = Print( 'dim_x', dim_x )
+        dim_y = Print( 'dim_y', dim_y )
+
         aspect = T.cast( dim_y, 'float32' ) / dim_x
 
-        low_border = np.array( [0.9] )
-        up_border  = np.array( [1.1] )
+        border_07 = np.array( [0.7] )
+        border_09 = np.array( [0.9] )
+        border_11 = np.array( [1.1] )
+        border_13 = np.array( [1.3] )
     
-        if1 = ifelse( T.gt(aspect, up_border)[0],
-                      self.spp3.get_output_for( input, **kwargs ),
-                      ifelse( T.lt( aspect, low_border )[0],
-                              self.spp2.get_output_for( input, **kwargs ), 
-                              self.spp1.get_output_for( input, **kwargs ) ) )
+        branches = ifelse( T.gt(aspect, border_13)[0],
+                      self.spp4.get_output_for( input, **kwargs ),
+                      ifelse( T.gt( aspect, border_11 )[0],
+                         self.spp3.get_output_for( input, **kwargs ), 
+                         ifelse( T.lt( aspect, border_07)[0],
+                             self.spp5.get_output_for( input, **kwargs ),
+                             ifelse( T.lt( aspect, border_09)[0],
+                                self.spp2.get_output_for( input, **kwargs),
+                                self.spp1.get_output_for( input, **kwargs ) ) ) ) )
 
-#        if_fct = theano.function( [input], if1,
-#                                  mode = theano.Mode( linker = 'vm' ) )
-
-        return if1[:,:T.shape(input)[1] * 21 ]
+        return branches
 
     def get_output_shape_for( self, input_shape ):
-        return( input_shape[0], input_shape[1], 21 )
+        return( input_shape[0], input_shape[1], self.spp1.features )
