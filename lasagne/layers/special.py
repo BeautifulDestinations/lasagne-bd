@@ -1212,11 +1212,15 @@ class SPP_cpu( Layer ):
 class spp_container( Layer ):
     def __init__( self, incoming, **kwargs ):
         super( spp_container, self ).__init__( incoming, **kwargs )
-        self.spp1 = SPP_cpu( incoming, image_x=14, image_y=14, name='spp1' )
-        self.spp2 = SPP_cpu( incoming, image_x=14, image_y=12, name='spp2' )
-        self.spp3 = SPP_cpu( incoming, image_x=12, image_y=14, name='spp3' )
-        self.spp4 = SPP_cpu( incoming, image_x=9,  image_y=14, name='spp4' )
-        self.spp5 = SPP_cpu( incoming, image_x=14, image_y=9,  name='spp5' )
+        self.spp1 = SPP_cpu( incoming, image_x=14, image_y=9,  name='spp1' )
+        self.spp2 = SPP_cpu( incoming, image_x=14, image_y=10, name='spp2' )
+        self.spp3 = SPP_cpu( incoming, image_x=14, image_y=12, name='spp3' )
+        self.spp4 = SPP_cpu( incoming, image_x=14, image_y=13, name='spp4' )
+        self.spp5 = SPP_cpu( incoming, image_x=14, image_y=14, name='spp5' )
+        self.spp6 = SPP_cpu( incoming, image_x=13, image_y=14, name='spp6' )
+        self.spp7 = SPP_cpu( incoming, image_x=12, image_y=14, name='spp7' )
+        self.spp8 = SPP_cpu( incoming, image_x=10, image_y=14, name='spp8' )
+        self.spp9 = SPP_cpu( incoming, image_x=9,  image_y=14, name='spp9' )
 
     def get_output_for( self, input, **kwargs ):
         dim_x = T.shape( input )[3]
@@ -1227,20 +1231,32 @@ class spp_container( Layer ):
 
         aspect = T.cast( dim_y, 'float32' ) / dim_x
 
-        border_07 = np.array( [0.7] )
-        border_09 = np.array( [0.9] )
-        border_11 = np.array( [1.1] )
-        border_13 = np.array( [1.3] )
+        border_06 = np.array( [0.65] )
+        border_07 = np.array( [0.75] )
+        border_08 = np.array( [0.85] )
+        border_09 = np.array( [0.95] )
+        border_10 = np.array( [1.05] )
+        border_11 = np.array( [1.15] )
+        border_12 = np.array( [1.25] )
+        border_13 = np.array( [1.35] )
     
         branches = ifelse( T.gt(aspect, border_13)[0],
-                      self.spp4.get_output_for( input, **kwargs ),
-                      ifelse( T.gt( aspect, border_11 )[0],
-                         self.spp3.get_output_for( input, **kwargs ), 
-                         ifelse( T.lt( aspect, border_07)[0],
-                             self.spp5.get_output_for( input, **kwargs ),
-                             ifelse( T.lt( aspect, border_09)[0],
-                                self.spp2.get_output_for( input, **kwargs),
-                                self.spp1.get_output_for( input, **kwargs ) ) ) ) )
+                      self.spp9.get_output_for( input, **kwargs ),
+                      ifelse( T.gt( aspect, border_12 )[0],
+                         self.spp8.get_output_for( input, **kwargs ),
+                         ifelse( T.gt( aspect, border_11 )[0],
+                            self.spp7.get_output_for( input, **kwargs ),
+                            ifelse( T.gt( aspect, border_10 )[0],
+                                self.spp6.get_output_for( incoming, **kwargs ),
+                                ifelse( T.gt( aspect, border_09)[0],
+                                    self.spp5.get_output_for( input, **kwargs ),
+                                    ifelse( T.gt( aspect, border_08)[0],
+                                        self.spp4.get_output_for( input, **kwargs),
+                                        ifelse( T.gt( aspect, border_07)[0],
+                                            self.spp3.get_output_for( input, **kwargs ),
+                                            ifelse( T.gt( aspect, border_06)[0],
+                                                self.spp2.get_output_for( input, **kwargs ),
+                                                self.spp1.get_output_for( input, **kwargs ) ) ) ) ) ) ) ) )
 
         return branches
 
