@@ -59,7 +59,7 @@ class DenseLayer(Layer):
     """
     def __init__(self, incoming, num_units, W=init.GlorotUniform(),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
-                 **kwargs):
+                 trainable=True, **kwargs):
         super(DenseLayer, self).__init__(incoming, **kwargs)
         self.nonlinearity = (nonlinearities.identity if nonlinearity is None
                              else nonlinearity)
