@@ -1247,7 +1247,7 @@ class spp_container( Layer ):
                          ifelse( T.gt( aspect, border_11 )[0],
                             self.spp7.get_output_for( input, **kwargs ),
                             ifelse( T.gt( aspect, border_10 )[0],
-                                self.spp6.get_output_for( incoming, **kwargs ),
+                                self.spp6.get_output_for( input, **kwargs ),
                                 ifelse( T.gt( aspect, border_09)[0],
                                     self.spp5.get_output_for( input, **kwargs ),
                                     ifelse( T.gt( aspect, border_08)[0],
