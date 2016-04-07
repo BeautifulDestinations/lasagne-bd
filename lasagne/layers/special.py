@@ -1226,9 +1226,6 @@ class spp_container( Layer ):
         dim_x = T.shape( input )[3]
         dim_y = T.shape( input )[2]
 
-        dim_x = Print( 'dim_x', dim_x )
-        dim_y = Print( 'dim_y', dim_y )
-
         aspect = T.cast( dim_y, 'float32' ) / dim_x
 
         border_06 = np.array( [0.65] )
