@@ -68,11 +68,13 @@ class DenseLayer(Layer):
 
         num_inputs = int(np.prod(self.input_shape[1:]))
 
-        self.W = self.add_param(W, (num_inputs, num_units), name="W")
+        self.W = self.add_param(W, (num_inputs, num_units), name="W",
+                trainable=trainable)
         if b is None:
             self.b = None
         else:
             self.b = self.add_param(b, (num_units,), name="b",
+                                    trainable=trainable,
                                     regularizable=False)
 
     def get_output_shape_for(self, input_shape):
