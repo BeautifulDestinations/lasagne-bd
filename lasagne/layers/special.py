@@ -1086,7 +1086,7 @@ class SPPLayer_3level(Layer):
     This implementation is a 3-level SPP.
     Different implementations are possible
     '''
-    def __init__(self, incoming, nbins=[4,2,1], **kwargs):
+    def __init__(self, incoming, nbins=[4,2,1], mode='max', **kwargs):
         super(SPPLayer_3level, self).__init__(incoming, **kwargs)
         assert len(nbins) == 3 , 'This is a 3 level pyramid'
         N_features = 0
@@ -1094,6 +1094,7 @@ class SPPLayer_3level(Layer):
             N_features += n*n
         self.N_features = N_features
         self.nbins = nbins
+        self.mode = mode
  
     def get_output_for(self, input, **kwargs):
         win1 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
@@ -1111,9 +1112,9 @@ class SPPLayer_3level(Layer):
         str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
                  T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
 
-        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[0]*self.nbins[0] ]
-        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[1]*self.nbins[1] ]
-        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[2]*self.nbins[2] ]
+        p1 = dnn.dnn_pool( input, win1, str1, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[0]*self.nbins[0] ]
+        p2 = dnn.dnn_pool( input, win2, str2, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[1]*self.nbins[1] ]
+        p3 = dnn.dnn_pool( input, win3, str3, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[2]*self.nbins[2] ]
 
         # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
         # To prevent this we take only the amount of features that we expect.
@@ -1226,6 +1227,9 @@ class spp_container( Layer ):
     def get_output_for( self, input, **kwargs ):
         dim_x = T.shape( input )[3]
         dim_y = T.shape( input )[2]
+
+#        dim_x = Print( 'dimx', dim_x )
+#        dim_y = Print( 'dimy', dim_y )
 
         aspect = T.cast( dim_y, 'float32' ) / dim_x
 
