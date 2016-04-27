@@ -895,7 +895,7 @@ class ParametricRectifierLayer(Layer):
     (3, 28)
     """
     def __init__(self, incoming, alpha=init.Constant(0.25), shared_axes='auto',
-                 **kwargs):
+                 trainable=True, **kwargs):
         super(ParametricRectifierLayer, self).__init__(incoming, **kwargs)
         if shared_axes == 'auto':
             self.shared_axes = (0,) + tuple(range(2, len(self.input_shape)))
@@ -912,6 +912,7 @@ class ParametricRectifierLayer(Layer):
             raise ValueError("ParametricRectifierLayer needs input sizes for "
                              "all axes that alpha's are not shared over.")
         self.alpha = self.add_param(alpha, shape, name="alpha",
+                                    trainable=trainable,
                                     regularizable=False)
 
     def get_output_for(self, input, **kwargs):
