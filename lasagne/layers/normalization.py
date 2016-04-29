@@ -230,7 +230,8 @@ class BatchNormLayer(Layer):
     """
     def __init__(self, incoming, axes='auto', epsilon=1e-4, alpha=0.1,
                  mode='low_mem', beta=init.Constant(0), gamma=init.Constant(1),
-                 mean=init.Constant(0), inv_std=init.Constant(1), **kwargs):
+                 mean=init.Constant(0), inv_std=init.Constant(1), 
+                 trainable = True, **kwargs):
         super(BatchNormLayer, self).__init__(incoming, **kwargs)
 
         if axes == 'auto':
@@ -254,12 +255,12 @@ class BatchNormLayer(Layer):
             self.beta = None
         else:
             self.beta = self.add_param(beta, shape, 'beta',
-                                       trainable=True, regularizable=False)
+                                       trainable=trainable, regularizable=False)
         if gamma is None:
             self.gamma = None
         else:
             self.gamma = self.add_param(gamma, shape, 'gamma',
-                                        trainable=True, regularizable=True)
+                                        trainable=trainable, regularizable=True)
         self.mean = self.add_param(mean, shape, 'mean',
                                    trainable=False, regularizable=False)
         self.inv_std = self.add_param(inv_std, shape, 'inv_std',
@@ -322,7 +323,7 @@ class BatchNormLayer(Layer):
         return normalized
 
 
-def batch_norm(layer, *args, **kwargs):
+def batch_norm(layer, trainable=True, *args, **kwargs):
     """
     Apply batch normalization to an existing layer. This is a convenience
     function modifying an existing layer to include batch normalization: It
@@ -373,7 +374,8 @@ def batch_norm(layer, *args, **kwargs):
     if old_bm:
         layer = BatchNormLayer(layer, **kwargs)
     else:
-        layer = BatchNormLayer(layer, name= 'batch_norm_'+name, **kwargs)
+        layer = BatchNormLayer(layer, trainable=trainable, 
+                    name= 'batch_norm_'+name, **kwargs)
     if nonlinearity is not None:
         from .special import NonlinearityLayer
         if old_bm:

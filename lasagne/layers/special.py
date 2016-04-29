@@ -1,3 +1,4 @@
+import math
 import theano
 import theano.tensor as T
 import numpy as np
@@ -10,6 +11,8 @@ from .base import Layer, MergeLayer
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from theano.sandbox.cuda import dnn
 from theano import printing
+from theano.tensor.signal.pool import pool_2d
+from theano.ifelse import ifelse
 
 __all__ = [
     "NonlinearityLayer",
@@ -26,6 +29,7 @@ __all__ = [
     "rrelu",
     "SPPLayer_3level",
     "SPPLayer_4level",
+    "spp_container"
 ]
 
 def Print( name, variable ):
@@ -891,7 +895,7 @@ class ParametricRectifierLayer(Layer):
     (3, 28)
     """
     def __init__(self, incoming, alpha=init.Constant(0.25), shared_axes='auto',
-                 **kwargs):
+                 trainable=True, **kwargs):
         super(ParametricRectifierLayer, self).__init__(incoming, **kwargs)
         if shared_axes == 'auto':
             self.shared_axes = (0,) + tuple(range(2, len(self.input_shape)))
@@ -908,6 +912,7 @@ class ParametricRectifierLayer(Layer):
             raise ValueError("ParametricRectifierLayer needs input sizes for "
                              "all axes that alpha's are not shared over.")
         self.alpha = self.add_param(alpha, shape, name="alpha",
+                                    trainable=trainable,
                                     regularizable=False)
 
     def get_output_for(self, input, **kwargs):
@@ -1082,7 +1087,7 @@ class SPPLayer_3level(Layer):
     This implementation is a 3-level SPP.
     Different implementations are possible
     '''
-    def __init__(self, incoming, nbins=[4,2,1], **kwargs):
+    def __init__(self, incoming, nbins=[4,2,1], mode='max', **kwargs):
         super(SPPLayer_3level, self).__init__(incoming, **kwargs)
         assert len(nbins) == 3 , 'This is a 3 level pyramid'
         N_features = 0
@@ -1090,6 +1095,7 @@ class SPPLayer_3level(Layer):
             N_features += n*n
         self.N_features = N_features
         self.nbins = nbins
+        self.mode = mode
  
     def get_output_for(self, input, **kwargs):
         win1 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
@@ -1107,13 +1113,13 @@ class SPPLayer_3level(Layer):
         str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
                  T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
 
-        p1 = dnn.dnn_pool( input, win1, str1, 'max', (0,0) ).flatten( 2 )
-        p2 = dnn.dnn_pool( input, win2, str2, 'max', (0,0) ).flatten( 2 )
-        p3 = dnn.dnn_pool( input, win3, str3, 'max', (0,0) ).flatten( 2 )
+        p1 = dnn.dnn_pool( input, win1, str1, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[0]*self.nbins[0] ]
+        p2 = dnn.dnn_pool( input, win2, str2, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[1]*self.nbins[1] ]
+        p3 = dnn.dnn_pool( input, win3, str3, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[2]*self.nbins[2] ]
 
         # For a = 11x11 and n=4 the output dimension is anomalous: we receive 25 instead of 16 filters
         # To prevent this we take only the amount of features that we expect.
-        return T.concatenate((p1, p2, p3), axis=1)[:,: T.shape( input )[1] * self.N_features]
+        return T.concatenate((p1, p2, p3), axis=1)
 
     def get_output_shape_for(self, input_shape):
         return (input_shape[0], input_shape[1], self.N_features )
@@ -1170,3 +1176,95 @@ class SPPLayer_4level(Layer):
     def get_output_shape_for(self, input_shape):
         return (input_shape[0], input_shape[1], self.N_features )
 
+class SPP_cpu( Layer ):
+    def __init__( self, incoming, nbins = [4,2,1], 
+                                  image_x = 224,
+                                  image_y = 224,
+                                  **kwargs ):
+        super( SPP_cpu, self).__init__(  incoming, **kwargs )
+        self.features = 0
+        self.nbins = nbins
+        self.image_x = image_x
+        self.image_y = image_y
+        for n in nbins:
+            self.features += n*n
+    
+    def get_output_for( self, input, **kwargs ):
+        pool_list = []
+        for n in self.nbins:
+            win_x = int( math.ceil( self.image_x / n ) )
+            win_y = int( math.ceil( self.image_y / n ) )
+            str_x = int( math.floor( self.image_x / n ) )
+            str_y = int( math.floor( self.image_y / n ) )
+
+            pool = pool_2d( input, \
+                            ds = (win_y,win_x), \
+                            st = (str_y,str_x),\
+                            ignore_border = True
+                            ).flatten(2)
+
+            pool = pool[ :,:T.shape( input )[1] * n*n ]
+            pool_list.append( pool )
+
+        return T.concatenate( pool_list, axis = 1 )#[:,:T.shape(input)[1] * 21 ]
+
+    def get_output_shape_for( self, input_shape ):
+        return( input_shape[0], input_shape[1], features )
+
+class spp_container( Layer ):
+    def __init__( self, incoming, **kwargs ):
+        super( spp_container, self ).__init__( incoming, **kwargs )
+        self.spp0 = SPP_cpu( incoming, image_x=14, image_y=9,  name='spp0' )
+        self.spp1 = SPP_cpu( incoming, image_x=14, image_y=10, name='spp1' )
+        self.spp2 = SPP_cpu( incoming, image_x=14, image_y=11, name='spp2' )
+        self.spp3 = SPP_cpu( incoming, image_x=14, image_y=12, name='spp3' )
+        self.spp4 = SPP_cpu( incoming, image_x=14, image_y=13, name='spp4' )
+        self.spp5 = SPP_cpu( incoming, image_x=14, image_y=14, name='spp5' )
+        self.spp6 = SPP_cpu( incoming, image_x=13, image_y=14, name='spp6' )
+        self.spp7 = SPP_cpu( incoming, image_x=12, image_y=14, name='spp7' )
+        self.spp8 = SPP_cpu( incoming, image_x=11, image_y=14, name='spp8' )
+        self.spp9 = SPP_cpu( incoming, image_x=10, image_y=14, name='spp9' )
+
+    def get_output_for( self, input, **kwargs ):
+        dim_x = T.shape( input )[3]
+        dim_y = T.shape( input )[2]
+
+#        dim_x = Print( 'dimx', dim_x )
+#        dim_y = Print( 'dimy', dim_y )
+
+        aspect = T.cast( dim_y, 'float32' ) / dim_x
+
+        border_05 = np.array( [0.70] )
+        border_06 = np.array( [0.75] )
+        border_07 = np.array( [0.80] )
+        border_08 = np.array( [0.90] )
+        border_09 = np.array( [0.95] )
+        border_10 = np.array( [1.05] )
+        border_11 = np.array( [1.15] )
+        border_12 = np.array( [1.25] )
+        border_13 = np.array( [1.35] )
+    
+        branches = ifelse( T.gt(aspect, border_13)[0],
+                      self.spp9.get_output_for( input, **kwargs ),
+                      ifelse( T.gt( aspect, border_12 )[0],
+                         self.spp8.get_output_for( input, **kwargs ),
+                         ifelse( T.gt( aspect, border_11 )[0],
+                            self.spp7.get_output_for( input, **kwargs ),
+                            ifelse( T.gt( aspect, border_10 )[0],
+                                self.spp6.get_output_for( input, **kwargs ),
+                                ifelse( T.gt( aspect, border_09)[0],
+                                    self.spp5.get_output_for( input, **kwargs ),
+                                    ifelse( T.gt( aspect, border_08)[0],
+                                        self.spp4.get_output_for( input, **kwargs),
+                                        ifelse( T.gt( aspect, border_07)[0],
+                                            self.spp3.get_output_for( input, **kwargs ),
+                                            ifelse( T.gt( aspect, border_06)[0],
+                                                self.spp2.get_output_for( input, **kwargs ),
+                                                ifelse( T.gt( aspect, border_05)[0],
+                                                    self.spp1.get_output_for( input, **kwargs ),
+                                                    self.spp0.get_output_for( input, **kwargs ) ) ) ) ) ) ) ) ) )
+
+        return branches
+
+    def get_output_shape_for( self, input_shape ):
+        return( input_shape[0], input_shape[1], self.spp1.features )

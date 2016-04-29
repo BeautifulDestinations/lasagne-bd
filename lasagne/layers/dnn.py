@@ -20,6 +20,7 @@ __all__ = [
     "MaxPool3DDNNLayer",
     "Conv2DDNNLayer",
     "Conv3DDNNLayer",
+    "FlexPool2DDNNLayer",
 ]
 
 
@@ -496,3 +497,31 @@ class Conv3DDNNLayer(BaseConvLayer):
                                 conv_mode=conv_mode
                                 )
         return conved
+
+class FlexPool2DDNNLayer(Layer):
+    def __init__(self, incoming, 
+                 ignore_border=True, mode='max', **kwargs):
+        super(FlexPool2DDNNLayer, self).__init__(incoming, **kwargs)
+        if len(self.input_shape) != 4:
+            raise ValueError("Tried to create a 2D pooling layer with "
+                             "input shape %r. Expected 4 input dimensions "
+                             "(batchsize, channels, 2 spatial dimensions)."
+                             % (self.input_shape,))
+        self.mode = mode
+        # The ignore_border argument is for compatibility with MaxPool2DLayer.
+        # ignore_border=False is not supported. Borders are always ignored.
+        if not ignore_border:
+            raise NotImplementedError("Pool2DDNNLayer does not support "
+                                      "ignore_border=False.")
+
+    def get_output_shape_for(self, input_shape):
+        output_shape = list(input_shape)  # copy / convert to mutable list
+        output_shape[2] = 1
+        output_shape[3] = 1
+        return tuple(output_shape)
+
+    def get_output_for(self, input, **kwargs):
+        dims = theano.tensor.shape( input )
+        return dnn.dnn_pool(input, (dims[2],dims[3]), (1,1),
+                            self.mode, (0,0))
+
