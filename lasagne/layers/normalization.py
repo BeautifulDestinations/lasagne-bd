@@ -120,8 +120,7 @@ class LocalResponseNormalization2DLayer(Layer):
 class BatchNormLayer(Layer):
     """
     lasagne.layers.BatchNormLayer(incoming, axes='auto', epsilon=1e-4,
-    alpha=0.1, mode='low_mem',
-    beta=lasagne.init.Constant(0), gamma=lasagne.init.Constant(1),
+    alpha=0.1, beta=lasagne.init.Constant(0), gamma=lasagne.init.Constant(1),
     mean=lasagne.init.Constant(0), inv_std=lasagne.init.Constant(1), **kwargs)
 
     Batch Normalization
@@ -243,7 +242,6 @@ class BatchNormLayer(Layer):
 
         self.epsilon = epsilon
         self.alpha = alpha
-        self.mode = mode
 
         # create parameters, ignoring all dimensions in axes
         shape = [size for axis, size in enumerate(self.input_shape)
