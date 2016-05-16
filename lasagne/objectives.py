@@ -399,3 +399,25 @@ def categorical_accuracy(predictions, targets, top_k=1):
                   [slice(-top_k, None)]]
         targets = theano.tensor.shape_padaxis(targets, axis=-1)
         return theano.tensor.any(theano.tensor.eq(top, targets), axis=-1)
+
+
+def triplet_loss(predictions, targets):
+    '''
+    calculates the distance between all pairs inside
+    predictions vector
+    '''
+    rolled_input = T.roll(predictions, 1)
+    rolled_targets = T.roll(targets, 1)
+
+    loss = 0.
+    for n in range(T.shape(predictions[0]) - 1 ):
+        sgn = T.where(rolled_targets=targets, 1, -1)
+        distance = (rolled_input - predicctions ) ** 2
+        distance = T.sqrt(distance)
+
+        loss += T.sum(sgn * distance )
+        rolled_targets = T.roll(rolled_targets, 1)
+        rolled_input = T.roll(rolled_input, 1)
+    return loss
+
+
