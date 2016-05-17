@@ -381,3 +381,16 @@ def batch_norm(layer, trainable=True, old_bm=False, *args, **kwargs):
             layer = NonlinearityLayer(layer, nonlinearity, \
                                         name = 'nonlinearity_'+name )
     return layer
+
+
+def L2NormalisationLayer(Layer):
+    def __init__(self, incoming, **kwargs):
+        super(self, L2NormalisationLayer).__init__(incoming, **kwargs)
+
+    def get_output_shape_for(self, input, **kwargs):
+        L2Norm = T.sum(input**2, axis=1)
+        return input / L2Norm
+
+    def get_output_shape(self, input_shape):
+        return input_shape
+
