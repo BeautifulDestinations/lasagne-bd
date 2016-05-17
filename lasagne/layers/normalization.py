@@ -49,6 +49,7 @@ __all__ = [
     "LocalResponseNormalization2DLayer",
     "BatchNormLayer",
     "batch_norm",
+    "L2NormalisationLayer",
 ]
 
 
@@ -383,14 +384,20 @@ def batch_norm(layer, trainable=True, old_bm=False, *args, **kwargs):
     return layer
 
 
-def L2NormalisationLayer(Layer):
+class L2NormalisationLayer(Layer):
+    '''
+    normalises the incoming layer to a unit hyperplane
+    '''
     def __init__(self, incoming, **kwargs):
-        super(self, L2NormalisationLayer).__init__(incoming, **kwargs)
+        super(L2NormalisationLayer, self).__init__(incoming, **kwargs)
 
-    def get_output_shape_for(self, input, **kwargs):
-        L2Norm = T.sum(input**2, axis=1)
+    def get_output_for(self, input, **kwargs):
+        L2Norm = T.sqrt(T.sum(input**2, axis=1))
+        L2Norm = T.repeat(L2Norm,input.shape[1])
+        L2Norm = T.reshape(L2Norm, (input.shape[0], input.shape[1]), ndim=2 )
+        
         return input / L2Norm
 
-    def get_output_shape(self, input_shape):
+    def get_output_shape_for(self, input_shape):
         return input_shape
 
