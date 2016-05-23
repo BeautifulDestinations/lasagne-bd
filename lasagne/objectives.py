@@ -76,6 +76,7 @@ This gives a loss expression good for monitoring validation error.
 """
 
 import theano.tensor
+import theano.tensor as T
 import theano.tensor.nnet
 
 from lasagne.layers import get_output
@@ -88,7 +89,8 @@ __all__ = [
     "binary_hinge_loss",
     "multiclass_hinge_loss",
     "binary_accuracy",
-    "categorical_accuracy"
+    "categorical_accuracy",
+    "triplet_loss",
 ]
 
 def binary_crossentropy(predictions, targets):
@@ -399,3 +401,37 @@ def categorical_accuracy(predictions, targets, top_k=1):
                   [slice(-top_k, None)]]
         targets = theano.tensor.shape_padaxis(targets, axis=-1)
         return theano.tensor.any(theano.tensor.eq(top, targets), axis=-1)
+
+
+from theano import printing
+
+def Print( name, variable ):
+    return printing.Print( name )(variable )
+
+def triplet_loss(predictions, targets):
+    '''
+    calculates the distance between all pairs inside
+    predictions vector
+    '''
+    rolled_input = T.roll(predictions, 1)
+    rolled_targets = T.roll(targets, 1)
+
+    loss = []
+    for n in range(10):
+        # If equal sgn is (+ve), else (*-ve)
+        sgn = 2 * T.eq(rolled_targets,targets) - 1
+        sgn = T.reshape( sgn, (sgn.shape[0], 1))
+
+        distance = T.sum((rolled_input - predictions )**2, axis=1)
+        distance = T.sqrt(distance)
+        distance = T.reshape( distance, (distance.shape[0], 1))
+
+        loss.append(sgn * distance)
+
+        rolled_targets = T.roll(rolled_targets, 1)
+        rolled_input = T.roll(rolled_input, 1)
+
+    loss = T.sum(loss, axis=0)
+    loss = T.as_tensor_variable(loss)
+
+    return loss

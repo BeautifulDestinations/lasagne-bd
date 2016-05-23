@@ -1,4 +1,5 @@
 import theano
+from theano import printing
 from theano.sandbox.cuda import dnn
 
 from .. import init
@@ -18,6 +19,9 @@ elif not dnn.dnn_available():
             "cuDNN not available: %s\nSee http://lasagne.readthedocs.org/en/"
             "latest/user/installation.html#cudnn" %
             dnn.dnn_available.msg)  # pragma: no cover
+
+def Print( name, variable ):
+    return printing.Print( name )(variable )
 
 
 __all__ = [
@@ -600,6 +604,7 @@ class SpatialPyramidPoolingDNNLayer(Layer):
             self.pool_dims = pool_dims
 
     def get_output_for(self, input, **kwargs):
+
         input_size = tuple(symb if fixed is None else fixed
                            for fixed, symb
                            in zip(self.input_shape[2:], input.shape[2:]))
@@ -608,9 +613,8 @@ class SpatialPyramidPoolingDNNLayer(Layer):
             win_size = tuple((i + pool_dim - 1) // pool_dim
                              for i in input_size)
             str_size = tuple(i // pool_dim for i in input_size)
-
             pool = dnn.dnn_pool(input, win_size, str_size, self.mode, (0, 0))
-            pool = pool.flatten(3)
+            pool = pool.flatten(3)[:,:,:pool_dim*pool_dim]
             pool_list.append(pool)
 
         return theano.tensor.concatenate(pool_list, axis=2)
