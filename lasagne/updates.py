@@ -200,14 +200,24 @@ def apply_momentum(updates, params=None, momentum=0.9):
         params = updates.keys()
     updates = OrderedDict(updates)
 
-    for param in params:
-        value = param.get_value(borrow=True)
-        velocity = theano.shared(np.zeros(value.shape, dtype=value.dtype),
+    if isinstance(momentum, list):
+        assert len( momentum ) == len( params ), \
+            '{} vs {}'.format(len(momentum), len(params))
+        for (param, q) in zip(params,momentum):
+            value = param.get_value(borrow=True)
+            velocity = theano.shared(np.zeros(value.shape, dtype=value.dtype),
+                                     broadcastable=param.broadcastable)
+            x = q * velocity + updates[param]
+            updates[velocity] = x - param
+            updates[param] = x       
+    else:
+        for param in params:
+            value = param.get_value(borrow=True)
+            velocity = theano.shared(np.zeros(value.shape, dtype=value.dtype),
                                  broadcastable=param.broadcastable)
-        x = momentum * velocity + updates[param]
-        updates[velocity] = x - param
-        updates[param] = x
-
+            x = momentum * velocity + updates[param]
+            updates[velocity] = x - param
+            updates[param] = x
     return updates
 
 
