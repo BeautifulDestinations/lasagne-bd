@@ -360,7 +360,7 @@ def nesterov_momentum(loss_or_grads, params, learning_rate, momentum=0.9):
     return apply_nesterov_momentum(updates, momentum=momentum)
 
 
-def adagrad(loss_or_grads, params, learning_rate=1.0, epsilon=1e-6):
+def adagrad(loss_or_grads, params, learning_rate=1.0, epsilon=1e-6, layer_weights=None):
     """Adagrad updates
 
     Scale learning rates by dividing with the square root of accumulated
@@ -419,7 +419,7 @@ def adagrad(loss_or_grads, params, learning_rate=1.0, epsilon=1e-6):
     return updates
 
 
-def rmsprop(loss_or_grads, params, learning_rate=1.0, rho=0.9, epsilon=1e-6):
+def rmsprop(loss_or_grads, params, learning_rate=1.0, rho=0.9, epsilon=1e-6, layer_weights=None):
     """RMSProp updates
 
     Scale learning rates by dividing with the moving average of the root mean
@@ -480,7 +480,7 @@ def rmsprop(loss_or_grads, params, learning_rate=1.0, rho=0.9, epsilon=1e-6):
     return updates
 
 
-def adadelta(loss_or_grads, params, learning_rate=1.0, rho=0.95, epsilon=1e-6):
+def adadelta(loss_or_grads, params, learning_rate=1.0, rho=0.95, epsilon=1e-6, layer_weights=None):
     """ Adadelta updates
 
     Scale learning rates by a the ratio of accumulated gradients to accumulated
