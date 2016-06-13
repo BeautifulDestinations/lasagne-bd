@@ -214,6 +214,7 @@ def apply_momentum(updates, params=None, momentum=0.9):
         for param in params:
             value = param.get_value(borrow=True)
             velocity = theano.shared(np.zeros(value.shape, dtype=value.dtype),
+                                 name = 'velocity_' + param.name,
                                  broadcastable=param.broadcastable)
             x = momentum * velocity + updates[param]
             updates[velocity] = x - param
@@ -306,6 +307,7 @@ def apply_nesterov_momentum(updates, params=None, momentum=0.9):
     for param in params:
         value = param.get_value(borrow=True)
         velocity = theano.shared(np.zeros(value.shape, dtype=value.dtype),
+                                 name = param.name + '_velocity',
                                  broadcastable=param.broadcastable)
         x = momentum * velocity + updates[param] - param
         updates[velocity] = x
