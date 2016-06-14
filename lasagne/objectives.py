@@ -405,20 +405,18 @@ def categorical_accuracy(predictions, targets, top_k=1):
 
 
 from theano import printing
+def Print( name, variable ):
+    return printing.Print( name )(variable )
 
 def ranking_loss(predictions, targets):
-    bs = predictions.shape[0]
-    predictions = T.reshape(predictions, (bs//2, 2))
-    targets = T.reshape(targets, (bs//2, 2))
-
-    r_i = predictions[:,0]
-    r_j = predictions[:,1]
+    r_i = predictions[0::2]
+    r_j = predictions[1::2]
 
     p_ij = 1 + T.exp(-r_i + r_j)
     p_ij = 1. / p_ij
 
-    t_i = targets[:,0]
-    t_j = targets[:,1]
+    t_i = targets[0::2]
+    t_j = targets[1::2]
 
     t_ij = T.switch(T.gt(t_i, t_j), 1., 0.)
 
