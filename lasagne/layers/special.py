@@ -163,7 +163,7 @@ class ScaleLayer(Layer):
     >>> layer.scales.get_value().shape
     (30, 50)
     """
-    def __init__(self, incoming, scales=init.Constant(1), shared_axes='auto',
+    def __init__(self, incoming, scales=init.Constant(1), shared_axes='auto', trainable=True,
                  **kwargs):
         super(ScaleLayer, self).__init__(incoming, **kwargs)
 
@@ -181,7 +181,7 @@ class ScaleLayer(Layer):
             raise ValueError("ScaleLayer needs specified input sizes for "
                              "all axes that scales are not shared over.")
         self.scales = self.add_param(
-            scales, shape, 'scales', regularizable=False)
+            scales, shape, 'scales', regularizable=False, trainable=trainable)
 
     def get_output_for(self, input, **kwargs):
         axes = iter(range(self.scales.ndim))
