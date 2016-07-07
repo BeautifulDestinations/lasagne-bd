@@ -86,6 +86,7 @@ __all__ = [
     "categorical_crossentropy",
     "squared_error",
     "one_sided_squared_error",
+    "squared_error_with_threshold",
     "aggregate",
     "binary_hinge_loss",
     "multiclass_hinge_loss",
@@ -176,6 +177,11 @@ def one_sided_squared_error(a, b):
     loss1 = ( min(b,0.) / b * max( (a-b), 0.) ) ** 2
     loss2 = ( max(b,0.) / b * min( (a-b), 0.) ) ** 2
     return loss1 + loss2
+
+def squared_error_with_threshold(a, b):
+    epsilon = 0.02
+    loss = max( abs(a-b)-epsilon, 0.) / (abs(a-b)-epsilon) * (abs(a-b)-epsilon)**2
+    return loss
 
 def weighted_squared_error(a, b):
     """Computes the element-wise squared difference between two tensors.
