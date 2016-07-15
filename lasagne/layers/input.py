@@ -4,6 +4,10 @@ import theano
 import theano.tensor as T
 
 from .. import utils
+from ..random import get_rng
+
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+
 
 from .base import Layer
 
@@ -73,3 +77,34 @@ class InputLayer(Layer):
     @Layer.output_shape.getter
     def output_shape(self):
         return self.shape
+
+class NoiseInputLayer(Layer):
+    def __init__(self, shape, input_var=None, name=None, **kwargs):
+        self.shape = shape
+        self._srng = RandomStreams(get_rng().randint(1, 2147462579))
+
+        if any(d is not None and d <= 0 for d in self.shape):
+            raise ValueError((
+                "Cannot create InputLayer with a non-positive shape "
+                "dimension. shape=%r, self.name=%r") % (
+                    self.shape, name))
+
+        ndim = len(shape)
+        if input_var is None:
+            # create the right TensorType for the given number of dimensions
+            input_var_type = T.TensorType(theano.config.floatX, [False] * ndim)
+            var_name = ("%s.input" % name) if name is not None else "input"
+            input_var = input_var_type(var_name)
+        else:
+            # ensure the given variable has the correct dimensionality
+            if input_var.ndim != ndim:
+                raise ValueError("shape has %d dimensions, but variable has "
+                                 "%d" % (ndim, input_var.ndim))
+        self.input_var = self._srng.normal(self.shape, avg = 0., std = 0.1)
+        self.name = name
+        self.params = OrderedDict()
+
+    @Layer.output_shape.getter
+    def output_shape(self):
+        return self.shape
+
