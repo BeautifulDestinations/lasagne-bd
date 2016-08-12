@@ -1187,7 +1187,8 @@ class SPPLayer_3level(Layer):
                  T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
         str1 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' ) / self.nbins[0]  ), 'int32' ), \
                  T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' ) / self.nbins[0]  ), 'int32' ) )
- 
+
+
         win2 = ( T.cast( T.ceil(  T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
                  T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[1]  ), 'int32' ) )
         str2 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[1]  ), 'int32' ), \
@@ -1197,6 +1198,7 @@ class SPPLayer_3level(Layer):
                  T.cast( T.ceil(  T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
         str3 = ( T.cast( T.floor( T.cast( T.shape( input )[ 2 ], 'float32' )  / self.nbins[2]  ), 'int32' ), \
                  T.cast( T.floor( T.cast( T.shape( input )[ 3 ], 'float32' )  / self.nbins[2]  ), 'int32' ) )
+
 
         p1 = dnn.dnn_pool( input, win1, str1, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[0]*self.nbins[0] ]
         p2 = dnn.dnn_pool( input, win2, str2, self.mode, (0,0) ).flatten( 2 )[:,:T.shape(input)[1]*self.nbins[1]*self.nbins[1] ]
@@ -1277,24 +1279,24 @@ class SPP_cpu( Layer ):
     def get_output_for( self, input, **kwargs ):
         pool_list = []
         for n in self.nbins:
-            win_x = int( math.ceil( self.image_x / n ) )
-            win_y = int( math.ceil( self.image_y / n ) )
-            str_x = int( math.floor( self.image_x / n ) )
-            str_y = int( math.floor( self.image_y / n ) )
-
+            win_x = int( math.ceil( float(self.image_x) / n ) )
+            win_y = int( math.ceil( float(self.image_y) / n ) )
+            str_x = int( math.floor( float(self.image_x) / n ) )
+            str_y = int( math.floor( float(self.image_y) / n ) )
             pool = pool_2d( input, \
                             ds = (win_y,win_x), \
                             st = (str_y,str_x),\
                             ignore_border = True
-                            ).flatten(2)
-
-            pool = pool[ :,:T.shape( input )[1] * n*n ]
+                            )
+            pool = pool.flatten(2)
+            nf = input.shape[1]
+            pool = pool[ :, :nf * n*n ]
             pool_list.append( pool )
 
         return T.concatenate( pool_list, axis = 1 )#[:,:T.shape(input)[1] * 21 ]
 
     def get_output_shape_for( self, input_shape ):
-        return( input_shape[0], input_shape[1], features )
+        return( input_shape[0], input_shape[1], self.features )
 
 class spp_container( Layer ):
     def __init__( self, incoming, **kwargs ):
@@ -1313,43 +1315,52 @@ class spp_container( Layer ):
     def get_output_for( self, input, **kwargs ):
         dim_x = T.shape( input )[3]
         dim_y = T.shape( input )[2]
-
-#        dim_x = Print( 'dimx', dim_x )
-#        dim_y = Print( 'dimy', dim_y )
-
         aspect = T.cast( dim_y, 'float32' ) / dim_x
 
-        border_05 = np.array( [0.70] )
-        border_06 = np.array( [0.75] )
-        border_07 = np.array( [0.80] )
-        border_08 = np.array( [0.90] )
-        border_09 = np.array( [0.95] )
-        border_10 = np.array( [1.05] )
-        border_11 = np.array( [1.15] )
-        border_12 = np.array( [1.25] )
-        border_13 = np.array( [1.35] )
-    
-        branches = ifelse( T.gt(aspect, border_13)[0],
-                      self.spp9.get_output_for( input, **kwargs ),
-                      ifelse( T.gt( aspect, border_12 )[0],
-                         self.spp8.get_output_for( input, **kwargs ),
-                         ifelse( T.gt( aspect, border_11 )[0],
-                            self.spp7.get_output_for( input, **kwargs ),
-                            ifelse( T.gt( aspect, border_10 )[0],
-                                self.spp6.get_output_for( input, **kwargs ),
-                                ifelse( T.gt( aspect, border_09)[0],
-                                    self.spp5.get_output_for( input, **kwargs ),
-                                    ifelse( T.gt( aspect, border_08)[0],
-                                        self.spp4.get_output_for( input, **kwargs),
-                                        ifelse( T.gt( aspect, border_07)[0],
-                                            self.spp3.get_output_for( input, **kwargs ),
-                                            ifelse( T.gt( aspect, border_06)[0],
-                                                self.spp2.get_output_for( input, **kwargs ),
-                                                ifelse( T.gt( aspect, border_05)[0],
-                                                    self.spp1.get_output_for( input, **kwargs ),
-                                                    self.spp0.get_output_for( input, **kwargs ) ) ) ) ) ) ) ) ) )
+        border_05 = 0.7  
+        border_06 = 0.75 
+        border_07 = 0.8  
+        border_08 = 0.9  
+        border_09 = 0.95 
+        border_10 = 1.05 
+        border_11 = 1.15 
+        border_12 = 1.25 
+        border_13 = 1.35 
+   
+        #intialise pooling result 
+        pooling_results = self.spp9.get_output_for( input, **kwargs ),
 
-        return branches
+        #find correct branch
+        pooling_results = ifelse( T.gt( aspect, border_12 ) and T.lt(aspect,border_13),
+                        self.spp8.get_output_for( input, **kwargs ),
+                        pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_11 ) and T.lt(aspect, border_12),
+                         self.spp7.get_output_for( input, **kwargs ),
+                         pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_10 ) and T.lt(aspect,border_11),
+                         self.spp6.get_output_for( input, **kwargs ),
+                         pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_09) and T.lt(aspect,border_10),
+                         self.spp5.get_output_for( input, **kwargs ),
+                         pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_08) and T.lt(aspect,border_09),
+                         self.spp4.get_output_for( input, **kwargs),
+                         pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_07) and T.lt(aspect,border_08),
+                         self.spp3.get_output_for( input, **kwargs ),
+                         pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_06) and T.lt(aspect,border_07),
+                         self.spp2.get_output_for( input, **kwargs ),
+                         pooling_results)
+        pooling_results = ifelse( T.gt( aspect, border_05) and T.lt(aspect,border_06),
+                         self.spp1.get_output_for( input, **kwargs ),
+                         pooling_results)
+
+        pooling_results = ifelse( T.lt( aspect, border_05),
+                          self.spp0.get_output_for( input, **kwargs ),
+                          pooling_results)
+
+        return pooling_results
 
     def get_output_shape_for( self, input_shape ):
-        return( input_shape[0], input_shape[1], self.spp1.features )
+        return (input_shape[0], input_shape[1], self.spp1.features )
