@@ -96,6 +96,7 @@ __all__ = [
     "triplet_loss",
 ]
 
+
 def binary_crossentropy(predictions, targets):
     """Computes the binary cross-entropy between predictions and targets.
 
@@ -440,30 +441,20 @@ def ranking_loss(predictions, targets):
 def Print( name, variable ):
     return printing.Print( name )(variable )
 
-def triplet_loss(predictions, targets):
+def triplet_loss(predictions, targets, gap=0.2):
     '''
-    calculates the distance between all pairs inside
-    predictions vector
+    calculates the distance between triplets
     '''
-    rolled_input = T.roll(predictions, 1)
-    rolled_targets = T.roll(targets, 1)
+    anchor = predictions[::3]
+    same_class = predictions[1::3]
+    opposite_class = predictions[2::3]
 
-    loss = []
-    for n in range(10):
-        # If equal sgn is (+ve), else (*-ve)
-        sgn = 2 * T.eq(rolled_targets,targets) - 1
-        sgn = T.reshape( sgn, (sgn.shape[0], 1))
+    pos_d = (same_class - anchor)**2
+    pos_d = T.sum(pos_d, axis=1)
 
-        distance = T.sum((rolled_input - predictions )**2, axis=1)
-        distance = T.sqrt(distance)
-        distance = T.reshape( distance, (distance.shape[0], 1))
+    neg_d = (opposite_class - anchor)**2
+    neg_d = T.sum(neg_d, axis=1)
 
-        loss.append(sgn * distance)
-
-        rolled_targets = T.roll(rolled_targets, 1)
-        rolled_input = T.roll(rolled_input, 1)
-
-    loss = T.sum(loss, axis=0)
-    loss = T.as_tensor_variable(loss)
-
+    per_example_distance = pos_d - neg_d + gap
+    loss = per_example_distance * T.gt(per_example_distance,0.)
     return loss
