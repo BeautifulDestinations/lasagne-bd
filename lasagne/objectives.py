@@ -458,3 +458,10 @@ def triplet_loss(predictions, targets, gap=0.2):
     per_example_distance = pos_d - neg_d + gap
     loss = per_example_distance * T.gt(per_example_distance,0.)
     return loss
+
+def binary_entropy(predictions, targets):
+    predictions = T.where(T.lt(predictions, 0.01), 0.01, predictions)
+    predictions = T.where(T.gt(predictions, 0.99), 0.99, predictions)
+    loss  = - targets * (T.log(predictions) - T.log(targets))
+    loss -= (1. - targets) * (T.log(1. - predictions) - T.log(1. - targets))
+    return loss
