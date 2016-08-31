@@ -29,7 +29,7 @@ __all__ = [
     "rrelu",
     "SPPLayer_3level",
     "SPPLayer_4level",
-    "spp_container"
+    "spp_container",
 ]
 
 def Print( name, variable ):
@@ -1364,3 +1364,6 @@ class spp_container( Layer ):
 
     def get_output_shape_for( self, input_shape ):
         return (input_shape[0], input_shape[1], self.spp1.features )
+
+
+

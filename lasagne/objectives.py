@@ -94,6 +94,7 @@ __all__ = [
     "categorical_accuracy",
     "ranking_loss",
     "triplet_loss",
+    "gaussian_mixture",
 ]
 
 
@@ -464,4 +465,16 @@ def binary_entropy(predictions, targets):
     predictions = T.where(T.gt(predictions, 0.99), 0.99, predictions)
     loss  = - targets * (T.log(predictions) - T.log(targets))
     loss -= (1. - targets) * (T.log(1. - predictions) - T.log(1. - targets))
+
+def gaussian_mixture(predictions, targets):
+    epsilon = 0.001
+    n_mixtures = predictions.shape[1]/3
+    alphas = predictions[:,:1*n_mixtures]
+    sigmas = predictions[:,1*n_mixtures:2*n_mixtures]
+    means =  predictions[:,2*n_mixtures:3*n_mixtures]
+    pi = 3.14159265
+    targets_bc = theano.tensor.extra_ops.repeat(targets, n_mixtures, axis=1)
+    gaussians = alphas / 2. / pi / sigmas * T.exp( -(targets_bc-means)**2 / 2. / (sigmas)**2)
+    summed_gaussians = T.sum(gaussians, axis=1) + epsilon
+    loss = - T.log(summed_gaussians)
     return loss

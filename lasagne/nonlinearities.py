@@ -22,6 +22,8 @@ def sigmoid(x):
     """
     return theano.tensor.nnet.sigmoid(x)
 
+def exponential(x):
+    return theano.tensor.exp(x)
 
 # softmax (row-wise)
 def softmax(x):

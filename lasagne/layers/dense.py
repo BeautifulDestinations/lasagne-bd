@@ -5,11 +5,12 @@ from .. import init
 from .. import nonlinearities
 
 from .base import Layer
-
+from .merge import ConcatLayer
 
 __all__ = [
     "DenseLayer",
     "NINLayer",
+    "gaussian_mixture",
 ]
 
 
@@ -192,3 +193,13 @@ class NINLayer(Layer):
             activation = out + b_shuffled
 
         return self.nonlinearity(activation)
+
+def gaussian_mixture(layer, n_mixtures=2):
+        alphas = DenseLayer(layer, num_units=n_mixtures, name='relative_weights',
+                                nonlinearity=nonlinearities.softmax)
+        sigmas = DenseLayer(layer, num_units=n_mixtures, name='variances',
+                                nonlinearity=nonlinearities.exponential)
+        means = DenseLayer(layer, num_units=n_mixtures, name='means',
+                                nonlinearity=nonlinearities.linear)
+        gaussian_mixture = ConcatLayer([alphas, sigmas, means], axis=1, name='linreg')
+        return gaussian_mixture
