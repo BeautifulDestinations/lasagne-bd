@@ -432,7 +432,7 @@ class TransformerLayer(MergeLayer):
     def get_output_shape_for(self, input_shapes):
         shape = input_shapes[0]
         factors = self.downsample_factor
-        return (shape[:2] + tuple(None if s is None else int(s / f)
+        return (shape[:2] + tuple(None if s is None else int(s // f)
                                   for s, f in zip(shape[2:], factors)))
 
     def get_output_for(self, inputs, **kwargs):
@@ -446,8 +446,8 @@ def _transform_affine(theta, input, downsample_factor):
     theta = T.reshape(theta, (-1, 2, 3))
 
     # grid of (x_t, y_t, 1), eq (1) in ref [1]
-    out_height = T.cast(height / downsample_factor[0], 'int64')
-    out_width = T.cast(width / downsample_factor[1], 'int64')
+    out_height = T.cast(height // downsample_factor[0], 'int64')
+    out_width = T.cast(width // downsample_factor[1], 'int64')
     grid = _meshgrid(out_height, out_width)
 
     # Transform A x (x_t, y_t, 1)^T -> (x_s, y_s)
@@ -685,7 +685,7 @@ class TPSTransformerLayer(MergeLayer):
     def get_output_shape_for(self, input_shapes):
         shape = input_shapes[0]
         factors = self.downsample_factor
-        return (shape[:2] + tuple(None if s is None else int(s / f)
+        return (shape[:2] + tuple(None if s is None else int(s // f)
                                   for s, f in zip(shape[2:], factors)))
 
     def get_output_for(self, inputs, **kwargs):
@@ -722,8 +722,8 @@ def _transform_thin_plate_spline(
     else:
 
         # Transformed grid
-        out_height = T.cast(height / downsample_factor[0], 'int64')
-        out_width = T.cast(width / downsample_factor[1], 'int64')
+        out_height = T.cast(height // downsample_factor[0], 'int64')
+        out_width = T.cast(width // downsample_factor[1], 'int64')
         orig_grid = _meshgrid(out_height, out_width)
         orig_grid = orig_grid[0:2, :]
         orig_grid = T.tile(orig_grid, (num_batch, 1, 1))
@@ -879,8 +879,8 @@ def _initialize_tps(num_control_points, input_shape, downsample_factor,
 
     if precompute_grid:
         # Construct grid
-        out_height = np.array(height / downsample_factor[0]).astype('int64')
-        out_width = np.array(width / downsample_factor[1]).astype('int64')
+        out_height = np.array(height // downsample_factor[0]).astype('int64')
+        out_width = np.array(width // downsample_factor[1]).astype('int64')
         x_t, y_t = np.meshgrid(np.linspace(-1, 1, out_width),
                                np.linspace(-1, 1, out_height))
         ones = np.ones(np.prod(x_t.shape))
@@ -935,7 +935,7 @@ class ParametricRectifierLayer(Layer):
     alpha=init.Constant(0.25), shared_axes='auto', **kwargs)
 
     A layer that applies parametric rectify nonlinearity to its input
-    following [1]_ (http://arxiv.org/abs/1502.01852)
+    following [1]_.
 
     Equation for the parametric rectifier linear unit:
     :math:`\\varphi(x) = \\max(x,0) + \\alpha \\min(x,0)`
@@ -967,7 +967,7 @@ class ParametricRectifierLayer(Layer):
     .. [1] K He, X Zhang et al. (2015):
        Delving Deep into Rectifiers: Surpassing Human-Level Performance on
        ImageNet Classification,
-       http://link.springer.com/chapter/10.1007/3-540-49430-8_2
+       http://arxiv.org/abs/1502.01852
 
     Notes
     -----
@@ -1028,6 +1028,7 @@ def prelu(layer, **kwargs):
     Examples
     --------
     Note that this function modifies an existing layer, like this:
+
     >>> from lasagne.layers import InputLayer, DenseLayer, prelu
     >>> layer = InputLayer((32, 100))
     >>> layer = DenseLayer(layer, num_units=200)
@@ -1150,6 +1151,7 @@ def rrelu(layer, **kwargs):
     Examples
     --------
     Note that this function modifies an existing layer, like this:
+
     >>> from lasagne.layers import InputLayer, DenseLayer, rrelu
     >>> layer = InputLayer((32, 100))
     >>> layer = DenseLayer(layer, num_units=200)

@@ -24,6 +24,9 @@ class TestAutocrop:
         assert autocrop_array_shapes(
             [(1, 2, 3, 4), (5, 6, 7, 8), (5, 4, 3, 2)], crop2) == \
             [(1, 2, 3, 4), (1, 2, 7, 8), (1, 2, 3, 2)]
+        assert autocrop_array_shapes(
+            [(None, 2, 3, 4), (5, 6, 7, 8), (5, 4, 3, 2)], crop2) == \
+            [(None, 2, 3, 4), (None, 2, 7, 8), (None, 2, 3, 2)]
 
         with pytest.raises(ValueError):
             autocrop_array_shapes(
@@ -110,10 +113,9 @@ class TestAutocrop:
 
 
 class TestConcatLayer:
-    @pytest.fixture
-    def layer(self):
+    def layer(self, axis):
         from lasagne.layers.merge import ConcatLayer
-        return ConcatLayer([Mock(), Mock()], axis=1)
+        return ConcatLayer([Mock(), Mock()], axis=axis)
 
     @pytest.fixture
     def crop_layer_0(self):
@@ -127,7 +129,9 @@ class TestConcatLayer:
         return ConcatLayer([Mock(), Mock()], axis=1,
                            cropping=['lower'] * 2)
 
-    def test_get_output_shape_for(self, layer):
+    @pytest.mark.parametrize("axis", (1, -1))
+    def test_get_output_shape_for(self, axis):
+        layer = self.layer(axis)
         assert layer.get_output_shape_for([(3, 2), (3, 5)]) == (3, 7)
         assert layer.get_output_shape_for([(3, 2), (3, None)]) == (3, None)
         assert layer.get_output_shape_for([(None, 2), (3, 5)]) == (3, 7)
@@ -146,7 +150,9 @@ class TestConcatLayer:
         assert result_0 == (7, 2)
         assert result_1 == (3, 7)
 
-    def test_get_output_for(self, layer):
+    @pytest.mark.parametrize("axis", (1, -1))
+    def test_get_output_for(self, axis):
+        layer = self.layer(axis)
         inputs = [theano.shared(numpy.ones((3, 3))),
                   theano.shared(numpy.ones((3, 2)))]
         result = layer.get_output_for(inputs)
